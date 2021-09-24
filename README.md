@@ -1,2 +1,1 @@
-# yb-backup-differential
-Yugabyte Differential backup
+A repository that started with the design for differential backups...
