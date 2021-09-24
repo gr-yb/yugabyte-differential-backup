@@ -1,8 +1,21 @@
-# Point In Time Recovery and Incremental Backups
+# Differential Backups\
+
+The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored effciently by using hard links. Hence, no matter how many times a file is present in different snapshots, it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
+
+The differential backup will copy new files in each snapshot off-cluster thus reducing the time and storage required. The major difference between differential backups and [Point In Time Recovery and Incremental Backups
+](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) is that restores of differential backups will be at the time when the snapshot was created as opposed to any point in time.
 
 ## Goals
-Point in time recovery (also referred to as *PITR* in this document) and incremental backups go hand in hand. These two features help in recovering from a number of error or failure scenarios by allowing the database to be rolled back to a specific point in time (in the past). The rollback is done from the last full backup, with the updates since that full backup being replayed till the desired point in time.
 
+* Reduce the storage size and time to backup a database to off-cluster storage.
+* Minimze changes to existing backup process
+* Maximize re-use of existing backup code
+* Remove expired files from off-cluster storage 
+
+Differential backups share the same goals the [Point In Time Recovery and Incremental Backups
+](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md)
+
+While point in time reccovery and incremental backups allow recovery for specific points in time, differntial snapshot backups will restore to the time when the snapshot was created.  is that 
 Point in time restores and incremental backups depend on full backups (also referred to as *base backups*). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for the set of namespaces/tables chosen by the user. Read more about the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md). Full backups are deemed expensive for the following reasons:
 * The performance of the database could be adversely affected. There may be a high latency of foreground operations, decreased throughput when the backup is happening.
 * The data set size may be large, requiring more time, bandwidth and disk space to perform the backup.
