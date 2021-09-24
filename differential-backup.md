@@ -44,7 +44,7 @@ Differential backups will be implemented with the following additions/modifcatio
 # Examples
 
 A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work:
-
+```
 gr@mbPro ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots % cat theFiles
 total 0
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
@@ -178,3 +178,4 @@ drwxr-xr-x  4 gr  staff   128B Sep 24 01:49 intents
 -rw-r--r--  1 gr  staff    15K Sep 24 01:49 MANIFEST-000011
 -rw-r--r--  1 gr  staff    16B Sep 24 01:49 CURRENT
 -rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
+```
