@@ -5,7 +5,7 @@ The current distributed backup implementation meets the efficiency and consisten
 Differential backups share the goals, recovery scenarios, and features of [Point In Time Recovery (PITR) and Incremental Backups
 ](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) but the major difference is that differential backups will only restore to the time when a snapshot is created while PITR and incremental backups can restore to specific points in time.
 
-## Goals
+# Goals
 
 * Reduce the storage size and time to backup a database to off-cluster storage.
 * Minimze changes to existing backup process
