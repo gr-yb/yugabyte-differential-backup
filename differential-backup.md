@@ -1,9 +1,9 @@
-# Differential Backups\
+# Differential Backups
 
 The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored effciently by using hard links. Hence, no matter how many times a file is present in different snapshots, it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
 
-The differential backup will copy new files in each snapshot off-cluster thus reducing the time and storage required. The major difference between differential backups and [Point In Time Recovery and Incremental Backups
-](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) is that restores of differential backups will be at the time when the snapshot was created as opposed to any point in time.
+Differential backups share the goals, recovery scenarios, and features of [Point In Time Recovery (PITR) and Incremental Backups
+](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) but the major difference is that differential backups will only restore to the time when a snapshot is created while PITR and incremental backups can restore to specific points in time.
 
 ## Goals
 
@@ -12,197 +12,169 @@ The differential backup will copy new files in each snapshot off-cluster thus re
 * Maximize re-use of existing backup code
 * Remove expired files from off-cluster storage 
 
-Differential backups share the same goals the [Point In Time Recovery and Incremental Backups
-](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md)
+# Process 
+After an in-cluster snapshot backup is created, the differential backup feature conducts these steps:
 
-While point in time reccovery and incremental backups allow recovery for specific points in time, differntial snapshot backups will restore to the time when the snapshot was created.  is that 
-Point in time restores and incremental backups depend on full backups (also referred to as *base backups*). A full backup, as the name suggests, is a complete transactional backup of data up to a certain point in time. The entire data set in the database is backed up for the set of namespaces/tables chosen by the user. Read more about the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md). Full backups are deemed expensive for the following reasons:
-* The performance of the database could be adversely affected. There may be a high latency of foreground operations, decreased throughput when the backup is happening.
-* The data set size may be large, requiring more time, bandwidth and disk space to perform the backup.
+### Step 1. Retrieve the previous snapshot manifest 
+* A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster. 
+* For the first differential backup all files will be copied off-cluster along with the manifest.
 
-The key design goals for this feature are listed below.
+### Step 2. Create the current manifest
+* Create the manifest of all files in the snapshot. 
+* Lookup each file in the previous snapshot manifest and if found, record the off-cluster storage location in the current manifest. 
+* If the file is not found in previous manifest then mark the file to be copied. 
 
-#### 1. RPO needs to be low
-The primary metric for this scenario is the recovery point objective or RPO. This is the data lost when a backup is restored, expressed as time. For example, an RPO of 1 hour would require losing no more than the last 1 hour of data.
+### Step 3. Copy new files to off-cluster storage
+* Copy files off-cluster as indicated in the current manifest.
+* Copy the manifest to the snapshot directory
+* Update the current manifest with the off-cluster location of the copied files.
 
-#### 2. Impact on cluster / cost should be low
-While it is important to ensure a low RPO, it often becomes essential to trade it off with a reasonable cost / impact of achieving it. The cost / impact of backups could get high because of the following reasons:
-* High CPU usage while taking a backup
-* Higher latencies / lower throughput while taking backups
-* The size of the backup is large, which would increase the network bandwidth utilization
-* Larger backups are also more expensive to store
-
-#### 3. RTO needs to be reasonable
-Note that while recovery time objective or RTO needs to be reasonable, it is typically not an important metric in the case of a backup restore. This is especially true in the case of YugabyteDB, where regular outages have a very low RTO since the database is inherently highly available.
-
-#### 4. Enabled at a namespace level
-This feature is currently designed to operate at the level of a YSQL database (namespace) or a YCQL keyspace.
-
-## Recovery Scenarios
-
-This feature will address the following recovery scenarios.
-
-#### A. Recover from app and operator errors
-Point in time recovery should allow recovering from the following scenarios by rolling the database to a point in time before the error occurred. The errors could be one of the following:
-1. DDL errors: A table is dropped by mistake
-2. DML errors: An erroneous UPDATE statement is run on the table
-
-In both the above cases, the table is rolled back to a point in time before the error occurred. 
-
-#### B. Recover from disk or filesystem corruption
-Data loss can happen due to one of the following reasons:
-1. Loss of a disk
-2. Erroneous deletion of DB data files: for example due to an operator error
-3. Introduction of bugs in the database software: for example, due to a software upgrade
-
-In a distributed SQL database such as YugabyteDB, scenarios #1 and #2 can be mitigated due to the presence of live replicas since it is highly unlikely the same issue occurs on all nodes. However, for scenario #3, point in time recovery is an important solution.
-
-#### C. Recover from disaster scenarios
-This is the scenario when the data in the entire source cluster is lost irrecoverably, and a restore needs to be performed from a remote location. While the likelihood of this scenario is low, it is still important to understand the probability of correlated failures. For example, a disaster due to a natural disaster has a very low probability of occurrence in a multi-region deployment, and it’s probability of occurrence increases with the proximity of the replicas.
-
-# Features
-
-The sections below describe the various features that will enable PITR and incremental backups, with a view to standardizing the terminology that will be used henceforth.
-
-## Flashback Database
-The flashback database feature allows rolling back an existing database or an existing backup to a specific point in time in the past, up to some maximum time history. For example, if a database is configured for flashback up to the last 25 hours, it should be possible to roll this database back to a point in time that is 25 hours ago. Also note that any backup taken from this database should preserve the same ability to rollback to a point in time.
-
-Key points:
-* This feature helps dealing with developer and operator error recovery mentioned in the Scenarios section, scenario A.
-* The rollback would also include any DDL changes, such as create/drop/alter tables.
-* The time granularity of the point in time that one can roll back to (1 second, 1 minute etc) is a separate parameter / specification.
-* This feature does not help with reducing the size of backups, since this would be comparable to a full backup
-
-
-## Incremental Backups
-Incremental backups only extract and backup the updates that occur after a specified point in time in the past. For example, an incremental might only contain all the changes that happened in the last hour. Note that the database should have been configured with the maximum history retention window (similar to the flashback database option). Therefore, if a database is configured to retain 25 hours of historical updates, then the largest incremental backup possible is 25 hours. Incremental backups should cover the following scenarios:
-* All changes as a result of DML statements such as INSERT, UPDATE, DELETE
-* DDL statements, such as creation of new tables and dropping of existing tables
-* Should include updates for tables that may get dropped in that time interval
-
-Key points:
-* This feature helps dealing with developer and operator error recovery (mentioned in the Scenarios section A).
-* The rollback should also include any DDL changes, such as create/drop/alter tables. 
-* The time granularity of the point in time that one can roll back to (1 second, 1 minute etc) is a separate parameter / specification.
-* Differential incremental backups require applying multiple incremental backups on top of a base backup
-
-What’s different from flashback database option:
-* Often run more frequently, since the data set size is reduced.
-* This handles a DR scenario (see Scenarios section C).
-
-There are two flavors of incremental backups, these are described below. Note that although YugayteDB will support both flavors, differential incremental backups are recommended.
-
-### Differential incremental backups
-In this case, each incremental backup only contains the updates that occurred after the previous incremental backup. All changes since last incremental. A point in time restore operation in this case would involve restoring the latest base backup followed by applying every differential incremental backup taken since that base backup.
-
-### Cumulative incremental backups
-Each of these incremental backups contain all changes since last base backup. The timestamp of the last base backup is specified by the operator. In this case, the point in time restore operation involves restoring the latest base backup followed by applying the latest cumulative incremental backup. 
-
-
-# Intended usage
-
-The table below shows a quick comparison of the intended usage patterns. 
-
-|                       | In-cluster flashback DB | Off-cluster flashback DB | Incremental backup | 
-| --------------------- | ----------------------- | ------------------------ | ------------------ |
-| Disk/file corruption  | Handled by replication in cluster | Handled by replication in cluster   | Handled by replication in cluster |
-| App/operator eror     | Yes                     | Yes                      | Yes                |
-| RPO                   | Very low                | High                     | Medium             |
-| RTO                   | Very low                | High                     | High               |
-| Disaster Recovery     | No (replication in cluster) | Yes                  | Yes                |
-| Impact / Cost         | Very low                | High (snapshot and copy) | Medium             |
-
-
-### Step 1. Enable the flashback database feature
-This would require specifying the maximum historic timestamp up to which the database needs to retain updates, called the *history cutoff timestamp*. This ensures that all updates being performed to both the schema using DDL operations and data using DML operations are retained till the specified history cutoff timestamp.
-
-As an example, to enable recovery to the last 24 hours, set the history retention cutoff timestamp to 25 hours.
-
-**Input parameters:** 
-
-* The history retention cutoff timestamp. 
-* Future optimization: the granularity of recovery (examples: 1 second, 1 minute, etc)
-
-
-### Step 2. Perform a full backup
-
-All of the features above depend on a base backup. Hence, the first step is to perform a full backup, which would return an internal timestamp (the hybrid timestamp) of the backup.
-
-**Input parameters:** 
-
-* The database (namespace) that needs to be backed up
-
-**Return/persisted values:** 
-
-* Full backups should persist / return a hybrid timestamp (`ts-full-backup`) which represents the time up to which the data has been backed up.
-* A fixed list of immutable files that can be copied out of the cluster
-
-### Step 3. Perform incremental backups
-
-Perform incremental backups as needed, eithr on demand or to occur at a schedule (recommended). An incremental backup would need to specify the hybrid timestamp of the last successful backup (which can be either an incremental or a full backup). Incremental backups would return the hybrid timestamp up to which they contain data.
-
-**Input parameters:** 
-
-* The database (namespace) that needs to be incrementally backed up
-* The hybrid timestamp (`ts-incremental-backup-start`) of the previously successful backup (incremental or full backup) 
-
-**Return/persisted values:** 
-
-* Incremental backups should persist / return a hybrid timestamp (`ts-incremental-backup-finish`) which represents the time up to which the data has been backed up.
-* A fixed list of immutable WAL files that can be copied out of the cluster. These files will contain the data for the time interval (`ts-incremental-backup-start`, `ts-incremental-backup-finish`].
-
-
-### Step 4. In-cluster point in time recovery
-
-### Step 5. Off-cluster point in time recovery
-
-### Step 6. Restore from incremental backups
-
+### Step 4. Remove expired files from off-cluster storage as needed. 
+* Based on the history cutoff timestamp remove files that do not exist in a snapshot.
 
 # Design
 
-Handling incremental backups for point in time recovery will be done by impementing two separate features - flashback DB and incremental backups. As a distributed SQL database, the way the approach to accomplishing these features for table data differs from that for the table schema. In this section, we will discuss  the design for table data (or DML) and table schema (DDL) across flashback DB and incremental backups. 
+Differential backups will be implemented with the following additions/modifcations to the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program: 
 
-> **Note:** that these depend on [performing a full snapshot / backup of the distributed database](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md).
+* Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persiste as JSON in files that are copied off-cluster.
+* Create primitives to copy and restore files. Leverage existing directory based primitives.  
+* Calculate files to copy off-cluster by comparing with previous backup's manifest.
+* Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage.
 
+# Examples
 
+A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work:
 
-## Handling table data (DML changes)
+gr@mbPro ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots % cat theFiles
+total 0
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
+drwxr-xr-x  16 gr  staff   512B Sep 24 01:37 81b0ce71-21fc-402f-8af3-2dea4cc7a7a9
+drwxr-xr-x  18 gr  staff   576B Sep 24 01:39 83a006ce-40e5-408e-8f03-fba2e1c5f546
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:41 7f3c9719-69a6-4eb7-a86e-0ad368b6a322
+drwxr-xr-x  16 gr  staff   512B Sep 24 01:43 24ebc93b-92a1-43cd-b177-699636f47287
+drwxr-xr-x  10 gr  staff   320B Sep 24 01:45 1a92c67f-8a31-42e2-b45e-cae8a986334b
+drwxr-xr-x  12 gr  staff   384B Sep 24 01:47 39c24b4f-a9db-4318-9e04-c7edac3a4fd1
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a75
+-rw-r--r--   1 gr  staff     0B Sep 24 06:20 theFiles
 
-The data in user table is split into tablets, each tablet peer stores data in the form of a set of WAL files (write ahead log, or the journal) and sst files (data files). Any update to the data is assigned a hybrid timestamp, which represent the timestamp when the update occurs. Note that this tablet data might reference transactions (in progress, committed and aborted), and requires the information in the transaction status table in order to be resolved correctly.
+./4160b771-2620-44f2-a482-3f94e796aefc:
+total 512064
+-rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+-rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
+-rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:35 intents
+-rw-r--r--  1 gr  staff    10K Sep 24 01:35 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:35 CURRENT
+-rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
 
-### Flashback database - retain all updates
+./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
+total 552944
+-rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+-rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
+-rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+-rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
+-rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
+-rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
+-rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
 
-Currently, the hybrid timestamp representing the timestamp of the update is written into the WAL for each update, and applied into the sst data files. However, older updates are dropped automatically by a process called compactions. Further, the hybrid timestamps are retained only for a short time period in the sst files. Recovering to a point in time in the past (called *history cutoff timestamp* requires that both the intermediate updates as well as the hydrid timestamps for each DML update be retained at least up to the *history cutoff timestamp*. For example, to allow recovering to any point in time over the last 24 hours retain all updates for the last 25 hours. This would require the following changes when PITR is enabled:
-* Compactions should not purge any older values once updates to rows occur. They would continue to purge the older updates once it is outside the retention window.
-* Every update should retain its corresponding hybrid timestamp.
+./83a006ce-40e5-408e-8f03-fba2e1c5f546:
+total 593696
+-rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+-rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
+-rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+-rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
+-rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
+-rw-r--r--  1 gr  staff    19M Sep 24 01:39 000032.sst.sblock.0
+-rw-r--r--  1 gr  staff   672K Sep 24 01:39 000032.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:39 intents
+-rw-r--r--  1 gr  staff    11K Sep 24 01:39 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:39 CURRENT
+-rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
 
-### Incremental backup - distributed WAL archival
+./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
+total 631264
+-rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
+-rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
+-rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
+-rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:41 intents
+-rw-r--r--  1 gr  staff    12K Sep 24 01:41 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:41 CURRENT
+-rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
 
-Incremental backups would be performed using **distributed WAL archival**, where the older files in the write ahead log across various nodes in the database cluster are moved/hard-linked to a different filesystem - perhaps on a separate mount point (called an *archive location*). This serves as the location from which the WAL logs may be copied out remotely. This is the most realtime way of backing up data.
+./24ebc93b-92a1-43cd-b177-699636f47287:
+total 671488
+-rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
+-rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
+-rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
+-rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
+-rw-r--r--  1 gr  staff    18M Sep 24 01:43 000035.sst.sblock.0
+-rw-r--r--  1 gr  staff   672K Sep 24 01:43 000035.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:43 intents
+-rw-r--r--  1 gr  staff    13K Sep 24 01:43 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:43 CURRENT
+-rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
 
-Based on the above, an incremental backup of the table data consists of the following:
-* a set of WAL files of the tablets comprising the database/keyspace
-* an optional set of sst data files (an optimization to reduce the data size and recovery time)
-* the contents of the transaction status table
+./1a92c67f-8a31-42e2-b45e-cae8a986334b:
+total 621792
+-rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:45 intents
+-rw-r--r--  1 gr  staff    14K Sep 24 01:45 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:45 CURRENT
+-rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
 
+./39c24b4f-a9db-4318-9e04-c7edac3a4fd1:
+total 658464
+-rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
+-rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
+-rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:47 intents
+-rw-r--r--  1 gr  staff    15K Sep 24 01:47 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:47 CURRENT
+-rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
 
-## Handling table schema (DDL changes)
-
-The scheme to backup DDL changes is the same in the case of both flashback database and incremental backups.
-
-DDL operations in a distributed database occur over a period of time, right from the timestamp `ts1` when the operation is initiated by the user to the timestamp `ts2` when these DDL changes have completed successfully across all nodes in the cluster. The new schema for the entire database (namespace) that contains the table being updated will be saved on both the system catalog and the various tablets that comprise the user table. The new schema will be saved at a candidate timestamp in the range [`ts1`, `ts2`]. 
-
-With the above scheme, the following changes would need to be implemented.
-
-### Restoring after `DROP TABLE` or `DROP INDEX`
-In this case, the actual table should not be dropped from disk, only purged from the system catalog. We would have the tablets belonging to the dropped table still running in the system, but the table itself would not be present in the system catalog. The physical drop of these tablets would be processed after the history cutoff.
-
-### Restoring after `CREATE TABLE` or `CREATE INDEX`
-In this case, the operation performing the roll back would need to drop the newly created tables since they did not exist earlier.
-
-### Restoring after `ALTER TABLE`
-In this case, the all of the tablets that make up the table would need to revert to the appropriate earlier version of the schema.
-
-
-[![Analytics](https://yugabyte.appspot.com/UA-104956980-4/architecture/design/point-in-time-recovery.md?pixel&useReferer)](https://github.com/yugabyte/ga-beacon)
+./ebe990cd-c5f2-4d91-bedc-b3252a4f5a75:
+total 692576
+-rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
+-rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
+-rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
+-rw-r--r--  2 gr  staff    16M Sep 24 01:49 000039.sst.sblock.0
+-rw-r--r--  2 gr  staff   604K Sep 24 01:49 000039.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:49 intents
+-rw-r--r--  1 gr  staff    15K Sep 24 01:49 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:49 CURRENT
+-rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
