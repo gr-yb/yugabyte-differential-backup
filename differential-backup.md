@@ -42,7 +42,7 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
 
 * Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persisted as JSON in files that are copied off-cluster.
 
-   * This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed. 
+   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed. 
 
 ```
 import pprint
@@ -74,7 +74,7 @@ manifest['table-id-1']['tablet-a2']['sst-file-1']['timestamp']='mytimestamp'
 pp.pprint(manifest)
 ```
 
-   * Output
+   Output
 
 ```
 {'table-id-1': {}}
@@ -100,16 +100,27 @@ pp.pprint(manifest)
 
 ```                                                         
 
-* Create primitives to copy and restore files. Leverage existing directory based primitives.  
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
-* Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage.
+
+  * Each manifest file will be persisted in off-cluster storage as is the SnapshotInfoPB and YSQLDump files (for SQL backups) 
+  * Use a naming convention for the manifest file to determine which is the manifest for the previous backup. 
+  * Load the previous' backup manifest and determine which files are new.
+
+* Invoke primitives to copy and restore files instead of current directory based primitives.  
+  
+  * Iterate through the maifest dictionary and invoke the off-cluster file copy primitive.
+   
+* Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage. The example that follows illustrates how the removal of off-cluster files.
 
 # Examples
 
-A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work:
+A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table 
+
+These are the 9 snapshots created by the scheduled backups with a frequency of 2 minutes for table  table id 000030ad000030008000000000004000 and tablet id 4b90c92c6a4b4a3aa03c6f941a8c7d1b 
+
 ```
-gr@mbPro ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots % cat theFiles
-total 0
+~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
+
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
 drwxr-xr-x  16 gr  staff   512B Sep 24 01:37 81b0ce71-21fc-402f-8af3-2dea4cc7a7a9
 drwxr-xr-x  18 gr  staff   576B Sep 24 01:39 83a006ce-40e5-408e-8f03-fba2e1c5f546
@@ -118,23 +129,31 @@ drwxr-xr-x  16 gr  staff   512B Sep 24 01:43 24ebc93b-92a1-43cd-b177-699636f4728
 drwxr-xr-x  10 gr  staff   320B Sep 24 01:45 1a92c67f-8a31-42e2-b45e-cae8a986334b
 drwxr-xr-x  12 gr  staff   384B Sep 24 01:47 39c24b4f-a9db-4318-9e04-c7edac3a4fd1
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a75
--rw-r--r--   1 gr  staff     0B Sep 24 06:20 theFiles
+```
 
+Files with *** indicate which are copied to off-cluster storage.
+
+The first snapshot will have all files copied to off-cluster storage.
+
+```
 ./4160b771-2620-44f2-a482-3f94e796aefc:
 total 512064
--rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
--rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
--rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
--rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
--rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
--rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+*** -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
+*** -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
+*** -rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+*** -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
+*** -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
+*** -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+*** -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+*** -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:35 intents
--rw-r--r--  1 gr  staff    10K Sep 24 01:35 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:35 CURRENT
--rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
+*** -rw-r--r--  1 gr  staff    10K Sep 24 01:35 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:35 CURRENT
+*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
+```
+Starting with the second snapshot only new files are copied off-cluster.
 
+```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
 total 552944
 -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
@@ -143,14 +162,15 @@ total 552944
 -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
--rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
--rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
--rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
+*** -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+*** -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+*** -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
+*** -rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
--rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
+*** -rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
 -rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
+```
 
 ./83a006ce-40e5-408e-8f03-fba2e1c5f546:
 total 593696
