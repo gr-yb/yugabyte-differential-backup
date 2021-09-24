@@ -16,27 +16,90 @@ Differential backups share the goals, recovery scenarios, and features of [Point
 After an in-cluster snapshot backup is created, the differential backup feature conducts these steps:
 
 ### Step 1. Retrieve the previous snapshot manifest 
+
 * A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster. 
-* For the first full differential backup all files will be copied off-cluster along with the manifest.
+* For the first or a full backup all files will be copied off-cluster along with the manifest.
 
 ### Step 2. Create the current manifest
+
 * Create the manifest of all files in the snapshot. 
 * Lookup each file in the previous snapshot manifest and if found, record the off-cluster storage location in the current manifest. 
 * If the file is not found in previous manifest then mark the file to be copied. 
 
 ### Step 3. Copy new files to off-cluster storage
-* Copy files off-cluster as indicated in the current manifest.
-* Copy the manifest to the snapshot directory
-* Update the current manifest with the off-cluster location of the copied files.
 
-### Step 4. Remove expired files from off-cluster storage as needed. 
-* Based on the history cutoff timestamp remove files that do not exist in a snapshot.
+* Copy files off-cluster as indicated in the current manifest.
+* Update the current manifest with the off-cluster location of the copied files.
+* Copy the manifest off cluster
+
+### Step 4. Remove expired files from off-cluster storage as needed.
+
+* Based on the history cutoff timestamp remove files that do not exist in a snapshot. Effectively when a file drops off from the source snapshots it is removed from off-cluster storage 
 
 # Design
 
-Differential backups will be implemented with the following additions/modifications to the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program: 
+Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program as per the following:
 
 * Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persisted as JSON in files that are copied off-cluster.
+
+   * This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed. 
+
+```
+import pprint
+import json
+
+pp = pprint.PrettyPrinter( indent= 4)
+
+manifest = {}
+manifest['table-id-1'] = {}
+pp.pprint(manifest)
+print("\n\n")
+
+manifest['table-id-1']['tablet-a1']={}
+pp.pprint(manifest)
+print("\n\n")
+
+manifest['table-id-1']['tablet-a1']['sst-file-1']={}
+manifest['table-id-1']['tablet-a1']['sst-file-1']['location']='myuri'
+manifest['table-id-1']['tablet-a1']['sst-file-1']['timestamp']='time_t_value'
+manifest['table-id-1']['tablet-a1']['sst-file-1']['version']=1
+pp.pprint(manifest)
+print("\n\n")
+
+manifest['table-id-1']['tablet-a2']={}
+manifest['table-id-1']['tablet-a2']['sst-file-1']={}
+manifest['table-id-1']['tablet-a2']['sst-file-1']['location']='myuri-a2'
+manifest['table-id-1']['tablet-a2']['sst-file-1']['version']=1
+manifest['table-id-1']['tablet-a2']['sst-file-1']['timestamp']='mytimestamp'
+pp.pprint(manifest)
+```
+
+   * Output
+
+```
+{'table-id-1': {}}
+
+
+
+{'table-id-1': {'tablet-a1': {}}}
+
+
+
+{   'table-id-1': {   'tablet-a1': {   'sst-file-1': {   'location': 'myuri',
+                                                         'timestamp': 'time_t_value',
+                                                         'version': 1}}}}
+
+
+
+{   'table-id-1': {   'tablet-a1': {   'sst-file-1': {   'location': 'myuri',
+                                                         'timestamp': 'time_t_value',
+                                                         'version': 1}},
+                      'tablet-a2': {   'sst-file-1': {   'location': 'myuri-a2',
+                                                         'timestamp': 'mytimestamp',
+                                                         'version': 1}}}}
+
+```                                                         
+
 * Create primitives to copy and restore files. Leverage existing directory based primitives.  
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
 * Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage.
