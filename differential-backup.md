@@ -114,13 +114,15 @@ pp.pprint(manifest)
 
 # Examples
 
-A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table 
+A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table and one tablet with ids  000030ad000030008000000000004000 and 4b90c92c6a4b4a3aa03c6f941a8c7d1b respectively.
 
-These are the 9 snapshots created by the scheduled backups with a frequency of 2 minutes for table  table id 000030ad000030008000000000004000 and tablet id 4b90c92c6a4b4a3aa03c6f941a8c7d1b 
-
+Below are the 9 snapshot directories created by the scheduled backup with a 2 minute frequency which are found under the directory
 ```
 ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
+```
 
+
+```
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
 drwxr-xr-x  16 gr  staff   512B Sep 24 01:37 81b0ce71-21fc-402f-8af3-2dea4cc7a7a9
 drwxr-xr-x  18 gr  staff   576B Sep 24 01:39 83a006ce-40e5-408e-8f03-fba2e1c5f546
