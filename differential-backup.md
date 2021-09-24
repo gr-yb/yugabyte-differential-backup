@@ -1,6 +1,6 @@
 # Differential Backups
 
-The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored effciently by using hard links. Hence, no matter how many times a file is present in different snapshots, it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
+The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored efficiently by using hard links. Hence, no matter how many times a file is present in different snapshots, it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
 
 Differential backups share the goals, recovery scenarios, and features of [Point In Time Recovery (PITR) and Incremental Backups
 ](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) but the major difference is that differential backups will only restore to the time when a snapshot is created while PITR and incremental backups can restore to specific points in time.
@@ -8,7 +8,7 @@ Differential backups share the goals, recovery scenarios, and features of [Point
 # Goals
 
 * Reduce the storage size and time to backup a database to off-cluster storage.
-* Minimze changes to existing backup process
+* Minimize changes to existing backup process
 * Maximize re-use of existing backup code
 * Remove expired files from off-cluster storage 
 
@@ -34,9 +34,9 @@ After an in-cluster snapshot backup is created, the differential backup feature 
 
 # Design
 
-Differential backups will be implemented with the following additions/modifcations to the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program: 
+Differential backups will be implemented with the following additions/modifications to the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program: 
 
-* Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persiste as JSON in files that are copied off-cluster.
+* Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persisted as JSON in files that are copied off-cluster.
 * Create primitives to copy and restore files. Leverage existing directory based primitives.  
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
 * Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage.
