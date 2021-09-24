@@ -17,7 +17,7 @@ After an in-cluster snapshot backup is created, the differential backup feature 
 
 ### Step 1. Retrieve the previous snapshot manifest 
 * A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster. 
-* For the first differential backup all files will be copied off-cluster along with the manifest.
+* For the first full differential backup all files will be copied off-cluster along with the manifest.
 
 ### Step 2. Create the current manifest
 * Create the manifest of all files in the snapshot. 
