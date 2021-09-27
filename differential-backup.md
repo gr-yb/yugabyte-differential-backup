@@ -34,7 +34,7 @@ After an in-cluster snapshot backup is created, the differential backup feature 
 
 ### Step 4. Remove expired files from off-cluster storage as needed.
 
-* Based on the history cutoff timestamp remove files that do not exist in a snapshot. Effectively when a file drops off from the source snapshots it is removed from off-cluster storage 
+* Based on the backup retention time, remove files from off-cluster storage that are not part of a snapshot that is still inside the retention time window.
 
 # Design
 
