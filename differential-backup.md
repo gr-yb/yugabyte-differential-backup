@@ -322,7 +322,7 @@ total 692576
 From the example, for a backup retention window of 6 minutes the first files removed are files 
 28, 30, 31, and 32 files at the seventh snapshot because the third snapshot occurred more 8 minutes from the seventh snapshot
 
-# Iplementation
+# Implementation
 
 * Add yb_create_differential command option
 * Yb_backup create_differential
