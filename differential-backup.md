@@ -36,7 +36,7 @@ After an in-cluster snapshot backup is created, the differential backup feature 
 
 * Based on the history cutoff timestamp remove files that do not exist in a snapshot. Effectively when a file drops off from the source snapshots it is removed from off-cluster storage 
 
-## Design
+# Design
 
 Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program as per the following:
 
@@ -320,4 +320,21 @@ total 692576
 ## Off-Cluster File Removals
 
 From the example, for a backup retention window of 6 minutes the first files removed are files 
-28, 30, 31, and 32 files at the seventh snapshot because the third snapshot occurred more 8 minutes from the seventh snapshot 
+28, 30, 31, and 32 files at the seventh snapshot because the third snapshot occurred more 8 minutes from the seventh snapshot
+
+# Iplementation
+
+* Add yb_create_differential command option
+* Yb_backup create_differential
+   * Parameters:
+      * Last_backup_location ←- where is my manifest?
+      * Restore_points to retain ←- when do I expire?
+      * Recopy_threshold ←- when do we recopy slowly changing files
+      * Backup history retention time
+
+
+# Restore points
+
+In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set though configuration. 
+
+Files that would be removed by backup retention time would be moved to a location where restore points use to recover.
