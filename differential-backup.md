@@ -133,9 +133,11 @@ drwxr-xr-x  12 gr  staff   384B Sep 24 01:47 39c24b4f-a9db-4318-9e04-c7edac3a4fd
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a75
 ```
 
-Files with *** indicate which are copied to off-cluster storage.
+Lines below that start with *** indicate files that are copied to off-cluster storage.
 
-The first snapshot will have all files copied to off-cluster storage.
+The MANIFEST and CURRENT files in each snapshot are always copied off-cluster.
+
+The first snapshot will have all files copied to off-cluster storage but subsequent snapshots will only copy new files off-cluster.
 
 ```
 ./4160b771-2620-44f2-a482-3f94e796aefc:
@@ -152,10 +154,7 @@ drwxr-xr-x  4 gr  staff   128B Sep 24 01:35 intents
 *** -rw-r--r--  1 gr  staff    10K Sep 24 01:35 MANIFEST-000011
 *** -rw-r--r--  1 gr  staff    16B Sep 24 01:35 CURRENT
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
-```
-Starting with the second snapshot only new files are copied off-cluster.
 
-```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
 total 552944
 -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
@@ -164,15 +163,14 @@ total 552944
 -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
-*** -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
-*** -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
+-rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 *** -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
 *** -rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
 *** -rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
 *** -rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
--rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
-```
+*** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
 
 ./83a006ce-40e5-408e-8f03-fba2e1c5f546:
 total 593696
@@ -186,12 +184,12 @@ total 593696
 -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
 -rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
--rw-r--r--  1 gr  staff    19M Sep 24 01:39 000032.sst.sblock.0
--rw-r--r--  1 gr  staff   672K Sep 24 01:39 000032.sst
+*** -rw-r--r--  1 gr  staff    19M Sep 24 01:39 000032.sst.sblock.0
+*** -rw-r--r--  1 gr  staff   672K Sep 24 01:39 000032.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:39 intents
--rw-r--r--  1 gr  staff    11K Sep 24 01:39 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:39 CURRENT
--rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
+*** -rw-r--r--  1 gr  staff    11K Sep 24 01:39 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:39 CURRENT
+*** -rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
 
 ./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
 total 631264
@@ -199,14 +197,14 @@ total 631264
 -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
--rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
--rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
--rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
+*** -rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
+*** -rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
+*** -rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
+*** -rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:41 intents
--rw-r--r--  1 gr  staff    12K Sep 24 01:41 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:41 CURRENT
--rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
+*** -rw-r--r--  1 gr  staff    12K Sep 24 01:41 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:41 CURRENT
+*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
 
 ./24ebc93b-92a1-43cd-b177-699636f47287:
 total 671488
@@ -218,23 +216,23 @@ total 671488
 -rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
 -rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
 -rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
--rw-r--r--  1 gr  staff    18M Sep 24 01:43 000035.sst.sblock.0
--rw-r--r--  1 gr  staff   672K Sep 24 01:43 000035.sst
+*** -rw-r--r--  1 gr  staff    18M Sep 24 01:43 000035.sst.sblock.0
+*** -rw-r--r--  1 gr  staff   672K Sep 24 01:43 000035.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:43 intents
--rw-r--r--  1 gr  staff    13K Sep 24 01:43 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:43 CURRENT
--rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
+*** -rw-r--r--  1 gr  staff    13K Sep 24 01:43 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:43 CURRENT
+*** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
 
 ./1a92c67f-8a31-42e2-b45e-cae8a986334b:
 total 621792
--rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
--rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
--rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
--rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
+*** -rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
+*** -rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
+*** -rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
+*** -rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:45 intents
--rw-r--r--  1 gr  staff    14K Sep 24 01:45 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:45 CURRENT
--rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
+*** -rw-r--r--  1 gr  staff    14K Sep 24 01:45 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:45 CURRENT
+*** -rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
 
 ./39c24b4f-a9db-4318-9e04-c7edac3a4fd1:
 total 658464
@@ -242,12 +240,12 @@ total 658464
 -rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
 -rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
 -rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
--rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
--rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
+*** -rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
+*** -rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:47 intents
--rw-r--r--  1 gr  staff    15K Sep 24 01:47 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:47 CURRENT
--rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
+*** -rw-r--r--  1 gr  staff    15K Sep 24 01:47 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:47 CURRENT
+*** -rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
 
 ./ebe990cd-c5f2-4d91-bedc-b3252a4f5a75:
 total 692576
@@ -255,12 +253,12 @@ total 692576
 -rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
 -rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
 -rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
--rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
--rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
--rw-r--r--  2 gr  staff    16M Sep 24 01:49 000039.sst.sblock.0
--rw-r--r--  2 gr  staff   604K Sep 24 01:49 000039.sst
+*** -rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
+*** -rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
+*** -rw-r--r--  2 gr  staff    16M Sep 24 01:49 000039.sst.sblock.0
+*** -rw-r--r--  2 gr  staff   604K Sep 24 01:49 000039.sst
 drwxr-xr-x  4 gr  staff   128B Sep 24 01:49 intents
--rw-r--r--  1 gr  staff    15K Sep 24 01:49 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:49 CURRENT
--rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
+*** -rw-r--r--  1 gr  staff    15K Sep 24 01:49 MANIFEST-000011
+*** -rw-r--r--  1 gr  staff    16B Sep 24 01:49 CURRENT
+*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
 ```
