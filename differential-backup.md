@@ -112,9 +112,9 @@ pp.pprint(manifest)
    
 * Determine what files to delete off-cluster based on manifest and snapshot files. Only when files are deleted from the tserver snapshots will they be removed from off-cluster storage. The example that follows illustrates how the removal of off-cluster files.
 
-# Examples
+# Example
 
-A walkthrough of the following directories of 9 snapshots from the postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table and one tablet with ids  000030ad000030008000000000004000 and 4b90c92c6a4b4a3aa03c6f941a8c7d1b respectively.
+A walkthrough of the following directories of 9 snapshots from a postgres database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table and one tablet with ids  000030ad000030008000000000004000 and 4b90c92c6a4b4a3aa03c6f941a8c7d1b respectively.
 
 Below are the 9 snapshot directories created by the scheduled backup with a 2 minute frequency which are found under the directory
 ```
