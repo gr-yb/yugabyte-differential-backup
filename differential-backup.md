@@ -146,10 +146,10 @@ The first snapshot copies all files to off-cluster storage but subsequent snapsh
 total 512064
 *** -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
 *** -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
-*** -rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
-*** -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 *** -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 *** -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+*** -rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+*** -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 *** -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
 *** -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 *** drwxr-xr-x  4 gr  staff   128B Sep 24 01:35 intents
@@ -167,10 +167,10 @@ The second snapshot copies the new '31' sst files and the files from the first s
 total 552944
 -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
 -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
--rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
 -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 *** -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
@@ -190,10 +190,10 @@ The third  snapshot copies the new '32' sst files and adds their metadata to the
 total 593696
 -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
 -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
--rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
 -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
+-rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
 -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
 -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
