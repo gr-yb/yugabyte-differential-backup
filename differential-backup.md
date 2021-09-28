@@ -10,21 +10,21 @@ Differential backups share the goals, recovery scenarios, and features of [Point
 * Reduce the storage size and time to backup a database to off-cluster storage.
 * Minimize changes to existing backup process
 * Maximize re-use of existing backup code
-* Remove expired files from off-cluster storage 
+* Remove expired files from off-cluster storage
 
-## Process 
+## Process
 After an in-cluster snapshot backup is created, the differential backup feature conducts these steps:
 
-### Step 1. Retrieve the previous snapshot manifest 
+### Step 1. Retrieve the previous snapshot manifest
 
-* A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster. 
+* A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster.
 * For the first or a full backup all files will be copied off-cluster along with the manifest.
 
 ### Step 2. Create the current manifest
 
-* Create the manifest of all files in the snapshot. 
-* Lookup each file in the previous snapshot manifest and if found, record the off-cluster storage location in the current manifest. 
-* If the file is not found in previous manifest then mark the file to be copied. 
+* Create the manifest of all files in the snapshot.
+* Lookup each file in the previous snapshot manifest and if found, record the off-cluster storage location in the current manifest.
+* If the file is not found in previous manifest then mark the file to be copied.
 
 ### Step 3. Copy new files to off-cluster storage
 
@@ -42,7 +42,7 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
 
 * Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persisted as JSON in files that are copied off-cluster.
 
-   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed. 
+   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed.
 
 ```
 import pprint
@@ -98,25 +98,25 @@ pp.pprint(manifest)
                                                          'timestamp': 'mytimestamp',
                                                          'version': 1}}}}
 
-```                                                         
+```
 
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
 
-  * Each manifest file is persisted in off-cluster storage as is the SnapshotInfoPB and YSQLDump files (for SQL backups) 
+  * Each manifest file is persisted in off-cluster storage as is the SnapshotInfoPB and YSQLDump files (for SQL backups)
   * Use a naming convention for the manifest file to determine which is the manifest for the previous backup (or other mechanism) .
   * Load the previous' backup manifest and determine which files are new.
 
-* Invoke primitives to copy and restore files instead of current directory based primitives.  
-  
+* Invoke primitives to copy and restore files instead of current directory based primitives.
+
   * Iterate through the maifest dictionary and invoke the off-cluster file copy primitive.
-   
+
 * Determine what files to delete off-cluster based on manifest and snapshot files. Files are deleted off-cluster when they exceed the time window for bacup retentions and the number of restore points kept. The example that follows illustrates how the removal of files.
 
 ## Example
 
-A walkthrough of the following 8 snapshots of a ysql database created with the yb-sample-apps SqlInserts workload demonstrates how differential backups are intended to work. The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
+A walkthrough of the following 8 snapshots of a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload demonstrates how differential backups are intended to work. The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
 
-In this example the snapshots are stored in this directory: 
+In the example the snapshots are stored in this directory:
 ```
 ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
 ```
@@ -137,7 +137,7 @@ Lines below that start with *** indicate files that are copied to off-cluster st
 
 The intents directory and the MANIFEST and CURRENT files are always copied off-cluster.
 
-### First snapshot 
+### First snapshot
 
 The first snapshot copies all files to off-cluster storage but subsequent snapshots will only copy new files.
 
@@ -158,9 +158,9 @@ total 512064
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
 ```
 
-### Second snapshot 
+### Second snapshot
 
-The second snapshot copies the new '31' sst files and the files from the first snapshot are recorded in the differential backup manifest. 
+The second snapshot copies the new '31' sst files and the files from the first snapshot are recorded in the differential backup manifest.
 
 ```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
@@ -181,7 +181,7 @@ total 552944
 *** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
 ```
 
-### Third snapshot 
+### Third snapshot
 
 The third  snapshot copies the new '32' sst files and adds their metadata to the manifest.
 
@@ -206,11 +206,11 @@ total 593696
 *** -rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
 ```
 
-### Fourth snapshot 
+### Fourth snapshot
 
-The fourth snapshot copies the new '33' and '34' files. 
+The fourth snapshot copies the new '33' and '34' files.
 
-The manifest entry for this snapshot does not have the sst 28, 30, 31, and 32 files from the third snapshot as they have been compacted and replaced by files 33 and 34. Only files 21 and 27 remain from the third snapshot.
+The manifest entry for this snapshot does not have the files 28, 30, 31, and 32 from the third snapshot as they have been compacted and replaced by files 33 and 34. Only files 21 and 27 remain from the third snapshot.
 
 ```
 ./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
@@ -229,7 +229,7 @@ total 631264
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
 ```
 
-### Fifth snapshot 
+### Fifth snapshot
 
 The fifth snapshot copies the new '35' files and updatest the manifest.
 
@@ -254,7 +254,7 @@ total 671488
 *** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
 ```
 
-### Sixth snapshot 
+### Sixth snapshot
 
 The sixth snapshot copies the new XXX files and updatest the manifest.
 
@@ -273,7 +273,7 @@ total 621792
 *** -rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
 ```
 
-### Seventh snapshot 
+### Seventh snapshot
 
 The seventh snapshot copies the new XXX files and updatest the manifest.
 
@@ -294,7 +294,7 @@ total 658464
 *** -rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
 ```
 
-### Eigth snapshot 
+### Eigth snapshot
 
 The eigth snapshot copies the new XXX files and updatest the manifest.
 
@@ -323,7 +323,7 @@ This diagram illustrates the files' lifecycle in differential backups
 
 ## Off-Cluster File Removals
 
-From the example, for a backup retention window of 6 minutes the first files removed are files 
+From the example, for a backup retention window of 6 minutes the first files removed are files
 28, 30, 31, and 32 files at the seventh snapshot because the third snapshot occurred more 8 minutes from the seventh snapshot
 
 # Implementation
@@ -339,6 +339,7 @@ From the example, for a backup retention window of 6 minutes the first files rem
 
 # Restore points
 
-In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set though configuration. 
+In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set though configuration.
 
 Files that would be removed by backup retention time would be moved to a location where restore points use to recover.
+gr@mbPro ~/YB/differentialBackup %
