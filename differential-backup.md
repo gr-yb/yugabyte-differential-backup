@@ -317,6 +317,10 @@ total 692576
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
 ```
 
+This diagram illustrates the files' lifecycle in differential backups
+
+![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
+
 ## Off-Cluster File Removals
 
 From the example, for a backup retention window of 6 minutes the first files removed are files 
