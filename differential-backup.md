@@ -114,13 +114,15 @@ pp.pprint(manifest)
 
 ## Example
 
-A walkthrough of 8 snapshots from a 2 minute interval schedule below demonstraatedsof a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload demonstrates how differential backups are intended to work. The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
+A walkthrough of 8 snapshots from a 2 minute interval backup schedule below demonstrate how differential backups work. The snapshots are of a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload which creates one table and one tablet. 
 
-In the example the snapshots are stored in this directory:
+The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
+
+In the example the snapshots are stored in this directory for table id 000030ad000030008000000000004000 and tablet id 000030ad000030008000000000004000:
 ```
 ~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
 ```
-and these are the directories for each snapshot
+These are the directories for each snapshot and below that are the contents of each directory 
 
 ```
 drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
@@ -137,9 +139,9 @@ Lines below that start with *** indicate files that are copied to off-cluster st
 
 The intents directory and the MANIFEST and CURRENT files are always copied off-cluster.
 
-### First snapshot
+### First snapshot directory
 
-The first snapshot copies all files to off-cluster storage but subsequent snapshots will only copy new files.
+The first snapshot copies all files to off-cluster storage.
 
 ```
 ./4160b771-2620-44f2-a482-3f94e796aefc:
@@ -158,9 +160,10 @@ total 512064
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
 ```
 
-### Second snapshot
+### Second snapshot directory
 
-The second snapshot copies the new '31' sst files and the files from the first snapshot are recorded in the differential backup manifest.
+The second snapshot only copies the new "000031" sst files off-cluster.
+All the other files in the directory are already off-cluster so they become entries in the manifest instead of being copied off-cluster.
 
 ```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
@@ -181,9 +184,11 @@ total 552944
 *** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
 ```
 
-### Third snapshot
+### Third snapshot directory
 
 The third  snapshot copies the new '32' sst files and adds their metadata to the manifest.
+
+Again as in the second snapshots all previously copied files' storage locations are added to manifest for this snapshot
 
 ```
 ./83a006ce-40e5-408e-8f03-fba2e1c5f546:
@@ -206,11 +211,13 @@ total 593696
 *** -rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
 ```
 
-### Fourth snapshot
+### Fourth snapshot directory
 
-The fourth snapshot copies the new '33' and '34' files.
+The fourth snapshot copies the new '33' and '34' files off-cluster.
 
-The manifest entry for this snapshot does not have the files 28, 30, 31, and 32 from the third snapshot as they have been compacted and replaced by files 33 and 34. Only files 21 and 27 remain from the third snapshot.
+The manifest entry for this snapshot does not have  files 28, 30, 31, and 32 from the previous snapshot. These files have been compacted and replaced by files 33 and 34. 
+
+Files 21 and 27 are still present in this snapshot. Only files 21 and 27  from the third snapshot.
 
 ```
 ./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
@@ -229,11 +236,11 @@ total 631264
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
 ```
 
-### Fifth snapshot
+### Fifth snapshot directory
 
 The fifth snapshot copies the new '35' files and updatest the manifest.
 
-All files from the fourth snapshot are also in this one.
+All files from the fourth snapshot are also here.
 
 ```
 ./24ebc93b-92a1-43cd-b177-699636f47287:
@@ -254,11 +261,12 @@ total 671488
 *** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
 ```
 
-### Sixth snapshot
+### Sixth snapshot directory
 
-The sixth snapshot copies the new XXX files and updatest the manifest.
+The sixth snapshot copies the new '38' files off-cluster and adds the storage locations of files 36 and 37 to the mainfest.
+The sixth snapshot copies the new 36 and 37 sst files and adds their storage locations to the manifest.
 
-All files from the YYY snapshot are also in this one.
+All files from the the all previous snapshots have been replaced or compacted into the new files for this snapshot. The manifest for this snapshot will only have entries for files 36 and 37.
 
 ```
 ./1a92c67f-8a31-42e2-b45e-cae8a986334b:
@@ -273,11 +281,9 @@ total 621792
 *** -rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
 ```
 
-### Seventh snapshot
+### Seventh snapshot directory
 
-The seventh snapshot copies the new XXX files and updatest the manifest.
-
-All files from the YYY snapshot are also in this one.
+The seventh snapshot copies the new '38' files off-cluster and adds the storage locations of files 36 and 37 to the mainfest.
 
 ```
 ./39c24b4f-a9db-4318-9e04-c7edac3a4fd1:
@@ -294,11 +300,9 @@ total 658464
 *** -rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
 ```
 
-### Eigth snapshot
+### Eigth snapshot directory
 
-The eigth snapshot copies the new XXX files and updatest the manifest.
-
-All files from the YYY snapshot are also in this one.
+The eigth snapshot copies the '39' files off-cluster and adds the storage locations of files 36, 37, and 38 to the mainfest.
 
 ```
 ./ebe990cd-c5f2-4d91-bedc-b3252a4f5a75:
