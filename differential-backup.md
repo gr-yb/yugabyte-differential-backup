@@ -1,9 +1,9 @@
 # Differential Backups
 
-The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored efficiently by using hard links. Hence, no matter how many times a file is present in different snapshots, it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
+The current distributed backup implementation meets the efficiency and consistency goals stated in the [design for a full, distributed backup](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-and-restore.md) for in-cluster backups. The snapshot directories are created quickly and files are stored efficiently by using hard links. Hence no matter how many times a file is present in different snapshots it only uses the storage of one file. However when each snapshot is copied off-cluster the files referred to by the hard links are copied. So if a file is present in 5 snapshots, there will be 5 full copies in off-cluster storage. As the database grows the time and storage to copy off-cluster increases and can become impractical.
 
 Differential backups share the goals, recovery scenarios, and features of [Point In Time Recovery (PITR) and Incremental Backups
-](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) but the major difference is that differential backups will only restore to the time when a snapshot is created while PITR and incremental backups can restore to specific points in time.
+](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/distributed-backup-point-in-time-recovery.md) with the difference that differential backups will only restore to the time when a snapshot is created while PITR and incremental backups can restore to specific points in time.
 
 ## Goals
 
@@ -13,12 +13,12 @@ Differential backups share the goals, recovery scenarios, and features of [Point
 * Remove expired files from off-cluster storage
 
 ## Process
-After an in-cluster snapshot backup is created, the differential backup feature conducts these steps:
+After an in-cluster snapshot backup is created, the differential backup does these steps:
 
 ### Step 1. Retrieve the previous snapshot manifest
 
 * A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster.
-* For the first or a full backup all files will be copied off-cluster along with the manifest.
+* For the first backup all files are copied off-cluster and the manifest with the files' off-cluster locations.
 
 ### Step 2. Create the current manifest
 
@@ -108,13 +108,13 @@ pp.pprint(manifest)
 
 * Invoke primitives to copy and restore files instead of current directory based primitives.
 
-  * Iterate through the maifest dictionary and invoke the off-cluster file copy primitive.
+  * Iterate through the manifest dictionary and invoke the off-cluster file copy primitive.
 
-* Determine what files to delete off-cluster based on manifest and snapshot files. Files are deleted off-cluster when they exceed the time window for bacup retentions and the number of restore points kept. The example that follows illustrates how the removal of files.
+* Determine what files to delete off-cluster based on manifest and snapshot files. Files are deleted off-cluster when they exceed the time window for backup retentions and the number of restore points kept. The example that follows illustrates how the removal of files.
 
 ## Example
 
-A walkthrough of the following 8 snapshots of a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload demonstrates how differential backups are intended to work. The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
+A walkthrough of 8 snapshots from a 2 minute interval schedule below demonstraatedsof a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload demonstrates how differential backups are intended to work. The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
 
 In the example the snapshots are stored in this directory:
 ```
