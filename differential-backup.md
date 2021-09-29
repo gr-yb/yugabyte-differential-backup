@@ -75,6 +75,19 @@ This is the proposed JSON structure for the manifest file. Additional fields may
 }
 ```
 
+## Implementation
+
+These must be in place to implement differential backup:
+
+* Add create_differential command option to the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program.
+* Invoke as "Yb_backup create_differential" parameters
+   * Parameters:
+      * Last_backup_location ←- where is my manifest?
+      * Backup history retention time
+      * Restore_points to retain ←- when do I expire? When do we move slowly changing files?
+
+Restore points are explained in the section 
+
 ## Example
 
 The yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload created the files for this example. The workload creates one table and one tablet. A snapshot schedule with a 2 minute interval ran for 16 minutes to create the snapshot directories.
@@ -544,88 +557,214 @@ total 16
 ```
 ### 6th Snapshot
 
-The 6th snapshot copies the new '38' files and updates the manifest.
+The 6th snapshot copies the  26 and 37 files and updates the manifest.
 
-All files from the 4th snapshot are present and become entries in this snapshot's manifest.
+All files from all previous snapshots are no longer present. Their entries are removed from the manifest 
 
-The sixth snapshot copies the new '38' files off-cluster and adds the storage locations of files 36 and 37 to the mainfest.
-The sixth snapshot copies the new 36 and 37 sst files and adds their storage locations to the manifest.
-
-All files from the the all previous snapshots have been replaced or compacted into the new files for this snapshot. The manifest for this snapshot will only have entries for files 36 and 37.
+#### Files
 
 ```
 ./1a92c67f-8a31-42e2-b45e-cae8a986334b:
-total 621792
-*** -rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
-*** -rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
-*** -rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
-*** -rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:45 intents
-*** -rw-r--r--  1 gr  staff    14K Sep 24 01:45 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:45 CURRENT
-*** -rw-r--r--  1 gr  staff   1.5K Sep 24 01:45 MANIFEST-000039
+-rw-r--r--  4 gr  staff   13325760 Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff  278834169 Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff     685969 Sep 24 01:45 000037.sst
+-rw-r--r--  4 gr  staff   17896872 Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:45 CURRENT
+-rw-r--r--  1 gr  staff      14461 Sep 24 01:45 MANIFEST-000011
+-rw-r--r--  1 gr  staff       1572 Sep 24 01:45 MANIFEST-000039
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:45 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff    16 Sep 24 01:45 CURRENT
+-rw-r--r--  1 gr  staff  1254 Sep 24 01:45 MANIFEST-000010
+```
+#### Manifest
+
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000036.sst": {
+                "location": "URI_of_file_000036.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst",
+                "version": 1
+            },
+            "000036.sst.sblock.0": {
+                "location": "URI_of_file_000036.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst.sblock.0",
+                "version": 1
+            },
+            "000037.sst": {
+                "location": "URI_of_file_000037.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst",
+                "version": 1
+            },
+            "000037.sst.sblock.0": {
+                "location": "URI_of_file_000037.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst.sblock.0",
+                "version": 1
+            }
+        }
+    }
+}
 ```
 
-### Seventh snapshot directory
 
-The seventh snapshot copies the new '38' files off-cluster and adds the storage locations of files 36 and 37 to the mainfest.
+### 7th Snapshot
+
+The 7th snapshot copies the 38 files and updates the manifest. 
+
+All files from the 6th snapshot are present and become entries in this snapshot's manifest.
+
+#### Files
 
 ```
 ./39c24b4f-a9db-4318-9e04-c7edac3a4fd1:
-total 658464
--rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
--rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
--rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
--rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
-*** -rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
-*** -rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:47 intents
-*** -rw-r--r--  1 gr  staff    15K Sep 24 01:47 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:47 CURRENT
-*** -rw-r--r--  1 gr  staff   1.9K Sep 24 01:47 MANIFEST-000040
+-rw-r--r--  4 gr  staff   13325760 Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff  278834169 Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff     685969 Sep 24 01:45 000037.sst
+-rw-r--r--  4 gr  staff   17896872 Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  3 gr  staff     686426 Sep 24 01:47 000038.sst
+-rw-r--r--  3 gr  staff   18084485 Sep 24 01:47 000038.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:47 CURRENT
+-rw-r--r--  1 gr  staff      15087 Sep 24 01:47 MANIFEST-000011
+-rw-r--r--  1 gr  staff       1976 Sep 24 01:47 MANIFEST-000040
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:47 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff    16 Sep 24 01:47 CURRENT
+-rw-r--r--  1 gr  staff  1364 Sep 24 01:47 MANIFEST-000010
+```
+#### Manifest
+
 ```
 
-### Eigth snapshot directory
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000036.sst": {
+                "location": "URI_of_file_000036.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst",
+                "version": 1
+            },
+            "000036.sst.sblock.0": {
+                "location": "URI_of_file_000036.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst.sblock.0",
+                "version": 1
+            },
+            "000037.sst": {
+                "location": "URI_of_file_000037.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst",
+                "version": 1
+            },
+            "000037.sst.sblock.0": {
+                "location": "URI_of_file_000037.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst.sblock.0",
+                "version": 1
+            },
+            "000038.sst": {
+                "location": "URI_of_file_000038.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000038.sst",
+                "version": 1
+            },
+            "000038.sst.sblock.0": {
+                "location": "URI_of_file_000038.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000038.sst.sblock.0",
+                "version": 1
+            }
+        }
+    }
+}
+```
 
-The eigth snapshot copies the '39' files off-cluster and adds the storage locations of files 36, 37, and 38 to the mainfest.
 
+### 8th snapshot directory
+
+The 8th snapshot copies the '39' files off-cluster and updates the manifest.
+
+All files from the 7th snapshot are present and become entries in this snapshot's manifest.
+
+#### Files
 ```
 ./ebe990cd-c5f2-4d91-bedc-b3252a4f5a75:
-total 692576
--rw-r--r--  4 gr  staff   266M Sep 24 01:44 000036.sst.sblock.0
--rw-r--r--  4 gr  staff    13M Sep 24 01:44 000036.sst
--rw-r--r--  4 gr  staff    17M Sep 24 01:45 000037.sst.sblock.0
--rw-r--r--  4 gr  staff   670K Sep 24 01:45 000037.sst
-*** -rw-r--r--  3 gr  staff    17M Sep 24 01:47 000038.sst.sblock.0
-*** -rw-r--r--  3 gr  staff   670K Sep 24 01:47 000038.sst
-*** -rw-r--r--  2 gr  staff    16M Sep 24 01:49 000039.sst.sblock.0
-*** -rw-r--r--  2 gr  staff   604K Sep 24 01:49 000039.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:49 intents
-*** -rw-r--r--  1 gr  staff    15K Sep 24 01:49 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:49 CURRENT
-*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
+-rw-r--r--  4 gr  staff   13325760 Sep 24 01:44 000036.sst
+-rw-r--r--  4 gr  staff  278834169 Sep 24 01:44 000036.sst.sblock.0
+-rw-r--r--  4 gr  staff     685969 Sep 24 01:45 000037.sst
+-rw-r--r--  4 gr  staff   17896872 Sep 24 01:45 000037.sst.sblock.0
+-rw-r--r--  3 gr  staff     686426 Sep 24 01:47 000038.sst
+-rw-r--r--  3 gr  staff   18084485 Sep 24 01:47 000038.sst.sblock.0
+-rw-r--r--  2 gr  staff     618803 Sep 24 01:49 000039.sst
+-rw-r--r--  2 gr  staff   16841513 Sep 24 01:49 000039.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:49 CURRENT
+-rw-r--r--  1 gr  staff      15713 Sep 24 01:49 MANIFEST-000011
+-rw-r--r--  1 gr  staff       2380 Sep 24 01:49 MANIFEST-000041
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:49 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff    16 Sep 24 01:49 CURRENT
+-rw-r--r--  1 gr  staff  1474 Sep 24 01:49 MANIFEST-000010
 ```
 
+#### Manifest
 
-## Off-Cluster File Removals
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000036.sst": {
+                "location": "URI_of_file_000036.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst",
+                "version": 1
+            },
+            "000036.sst.sblock.0": {
+                "location": "URI_of_file_000036.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000036.sst.sblock.0",
+                "version": 1
+            },
+            "000037.sst": {
+                "location": "URI_of_file_000037.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst",
+                "version": 1
+            },
+            "000037.sst.sblock.0": {
+                "location": "URI_of_file_000037.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000037.sst.sblock.0",
+                "version": 1
+            },
+            "000038.sst": {
+                "location": "URI_of_file_000038.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000038.sst",
+                "version": 1
+            },
+            "000038.sst.sblock.0": {
+                "location": "URI_of_file_000038.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000038.sst.sblock.0",
+                "version": 1
+            },
+            "000039.sst": {
+                "location": "URI_of_file_000039.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000039.sst",
+                "version": 1
+            },
+            "000039.sst.sblock.0": {
+                "location": "URI_of_file_000039.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000039.sst.sblock.0",
+                "version": 1
+            }
+        }
+    }
+}
+```
 
-From the example, for a backup retention window of 6 minutes the first files removed are files
-28, 30, 31, and 32 files at the seventh snapshot because the third snapshot occurred more 8 minutes from the seventh snapshot
+# Restore Points, and Backup Retention Period
 
-# Implementation
-
-* Add yb_create_differential command option
-* yb_backup create_differential
-   * Parameters: (in addition to the normal create parameters)
-      * --last_backup_location ←- where is my manifest?
-      * --restore_points to retain ←- when do I expire?
-      * --recopy_threshold ←- when do we recopy slowly changing files
-      * Backup history retention time
+The following diagram illustrates the relationship between restore points and backup retention time and also shows when files are removed. 
+![image](https://user-images.githubusercontent.com/84997113/135267643-fcc8bbf8-33a8-482d-a1b6-e27f7b16a839.png)
 
 
-# Restore Points and Backup Retention Period Interaction
+Restore points are a mechanism to restore files beyond the backup history retention time up to a discrete number of retention points as set through configuration.
 
-In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set through configuration.
-
-Files that would be removed by backup retention time would be moved to a location where valid restore points can be used to recover. The most common case is the slowly changing table that may not get updated enough to not be expired from the backup. In this case, we will use the blob storage providers "move" facility to bring it into the current backup. This threshold will be controlled by the "recopy_threshold".
-
+Files that would be removed by backup retention time would be moved to a location where restore points use to recover.
+gr@mbPro ~/YB/differentialBackup %
