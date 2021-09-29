@@ -382,9 +382,9 @@ The manifest entry for this snapshot does not have files 28, 30, 31, and 32 sst 
 
 Files 21 and 27 are still present in this snapshot.
 
+#### Files
 ```
 ./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
-total 620864
 -rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
 -rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
 -rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
@@ -403,7 +403,55 @@ total 16
 -rw-r--r--  1 gr  staff    16 Sep 24 01:41 CURRENT
 -rw-r--r--  1 gr  staff  1034 Sep 24 01:41 MANIFEST-0000106
 ```
-
+#### Manifest
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000021.sst": {
+                "location": "URI_of_file_000021.sst",
+                "file_timestamp": "2021-09-24 01:24:28.555850452",
+                "version": 1
+            },
+            "000021.sst.sblock.0": {
+                "location": "URI_of_file_000021.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:24:28.555487300",
+                "version": 1
+            },
+            "000027.sst": {
+                "location": "URI_of_file_000027.sst",
+                "file_timestamp": "2021-09-24 01:33:54.949000435",
+                "version": 1
+            },
+            "000027.sst.sblock.0": {
+                "location": "URI_of_file_000027.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:54.948762402",
+                "version": 1
+            },
+            "000033.sst": {
+                "location": "URI_of_file_000033.sst",
+                "file_timestamp": "2021-09-24 01:39:32.75494731",
+                "version": 1
+            },
+            "000033.sst.sblock.0": {
+                "location": "URI_of_file_000033.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:39:32.754947318",
+                "version": 1
+            },
+            "000034.sst": {
+                "location": "URI_of_file_000034.sst",
+                "file_timestamp": "2021-09-24 01:41:32.882447921",
+                "version": 1
+            },
+            "000034.sst.sblock.0": {
+                "location": "URI_of_file_000034.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:41:32.882087113",
+                "version": 1
+            }
+        }
+    }
+}
+```
 ### Fifth snapshot directory
 
 The fifth snapshot copies the new '35' files and updatest the manifest.
