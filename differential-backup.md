@@ -374,13 +374,13 @@ total 16
 }
 ```
 
-### Fourth snapshot directory
+### 4th Snapshot
 
-The fourth snapshot copies the new '000033' and '000034' files off-cluster.
+The 4th snapshot copies the new '33' and '34'files and updates the manifest.
 
 The manifest entry for this snapshot does not have files 28, 30, 31, and 32 sst files from the previous snapshot as these files have been compacted
 
-Files 21 and 27 are still present in this snapshot.
+Files 21 and 27 are present in this snapshot.
 
 #### Files
 ```
@@ -452,32 +452,101 @@ total 16
     }
 }
 ```
-### Fifth snapshot directory
+### 5th Snapshot
 
-The fifth snapshot copies the new '35' files and updatest the manifest.
+The 5th snapshot copies the new '35' files and updates the manifest.
 
-All files from the fourth snapshot are also here.
+All files from the 4th snapshot are present and become entries in this snapshot's manifest.
+
+#### Files
 
 ```
 ./24ebc93b-92a1-43cd-b177-699636f47287:
-total 671488
--rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
--rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
--rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
--rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
--rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
--rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
-*** -rw-r--r--  1 gr  staff    18M Sep 24 01:43 000035.sst.sblock.0
-*** -rw-r--r--  1 gr  staff   672K Sep 24 01:43 000035.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:43 intents
-*** -rw-r--r--  1 gr  staff    13K Sep 24 01:43 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:43 CURRENT
-*** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:43 MANIFEST-000037
-```
+-rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
+-rw-r--r--  5 gr  staff   81408353 Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  2 gr  staff    1925418 Sep 24 01:39 000033.sst
+-rw-r--r--  2 gr  staff   54738545 Sep 24 01:39 000033.sst.sblock.0
+-rw-r--r--  2 gr  staff     687498 Sep 24 01:41 000034.sst
+-rw-r--r--  2 gr  staff   18945951 Sep 24 01:41 000034.sst.sblock.0
+-rw-r--r--  1 gr  staff     688204 Sep 24 01:43 000035.sst
+-rw-r--r--  1 gr  staff   19292590 Sep 24 01:43 000035.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:43 CURRENT
+-rw-r--r--  1 gr  staff      13300 Sep 24 01:43 MANIFEST-000011
+-rw-r--r--  1 gr  staff       2784 Sep 24 01:43 MANIFEST-000037
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:43 intents
 
-### Sixth snapshot directory
+./intents:
+total 16
+-rw-r--r--  1 gr  staff    16 Sep 24 01:43 CURRENT
+-rw-r--r--  1 gr  staff  1144 Sep 24 01:43 MANIFEST-000010
+```
+#### Manifest
+
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000021.sst": {
+                "location": "URI_of_file_000021.sst",
+                "file_timestamp": "2021-09-24 01:24:28.555850452",
+                "version": 1
+            },
+            "000021.sst.sblock.0": {
+                "location": "URI_of_file_000021.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:24:28.555487300",
+                "version": 1
+            },
+            "000027.sst": {
+                "location": "URI_of_file_000027.sst",
+                "file_timestamp": "2021-09-24 01:33:54.949000435",
+                "version": 1
+            },
+            "000027.sst.sblock.0": {
+                "location": "URI_of_file_000027.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:54.948762402",
+                "version": 1
+            },
+            "000033.sst": {
+                "location": "URI_of_file_000033.sst",
+                "file_timestamp": "2021-09-24 01:39:32.75494731",
+                "version": 1
+            },
+            "000033.sst.sblock.0": {
+                "location": "URI_of_file_000033.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:39:32.754947318",
+                "version": 1
+            },
+            "000034.sst": {
+                "location": "URI_of_file_000034.sst",
+                "file_timestamp": "2021-09-24 01:41:32.882447921",
+                "version": 1
+            },
+            "000034.sst.sblock.0": {
+                "location": "URI_of_file_000034.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:41:32.882087113",
+                "version": 1
+            },
+            "000035.sst": {
+                "location": "URI_of_file_000035.sst",
+                "file_timestamp": "epoch_timestamp_of_file_000035.sst",
+                "version": 1
+            },
+            "000035.sst.sblock.0": {
+                "location": "URI_of_file_000035.sst.sblock.0",
+                "file_timestamp": "epoch_timestamp_of_file_000035.sst.sblock.0",
+                "version": 1
+            }
+        }
+    }
+}
+```
+### 6th Snapshot
+
+The 6th snapshot copies the new '38' files and updates the manifest.
+
+All files from the 4th snapshot are present and become entries in this snapshot's manifest.
 
 The sixth snapshot copies the new '38' files off-cluster and adds the storage locations of files 36 and 37 to the mainfest.
 The sixth snapshot copies the new 36 and 37 sst files and adds their storage locations to the manifest.
