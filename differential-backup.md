@@ -186,7 +186,7 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 ```
 ### 2nd Snapshot
 
-As shown in the [Differential Backup diagram](####differential-backup-diagram), the second snapshot copies the new "000031" sst files.
+As shown in the [Differential Backup diagram](####-differential-backup-diagram), the second snapshot copies the new "000031" sst files.
 All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshot's manifest. 
 
 #### Files
