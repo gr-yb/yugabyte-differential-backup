@@ -106,11 +106,11 @@ The following diagram shows the how the sst snapshot files are copied and added 
 
 The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'
 
-### 1st snapshot file and manifest
+### 1st Snapshot
 
 The first snapshot copies all files to off-cluster storage.
 
-These are the files in 1st snapshot directory 
+These are the files in the 1st snapshot directory 
 
 ```
 4160b771-2620-44f2-a482-3f94e796aefc:
@@ -127,12 +127,12 @@ These are the files in 1st snapshot directory
 -rw-r--r--  1 gr  staff       2379 Sep 24 01:35 MANIFEST-000032
 drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 
-./tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots/4160b771-2620-44f2-a482-3f94e796aefc/intents:
+4160b771-2620-44f2-a482-3f94e796aefc/intents:
 -rw-r--r--  1 gr  staff   16 Sep 24 01:35 CURRENT
 -rw-r--r--  1 gr  staff  704 Sep 24 01:35 MANIFEST-000010
 ```
 
-Below is the content of this snapshot's manifest file. Only the sst files are listed as the CURRENT and MANIFEST files are always copied.
+The manifes only stores the sst files since the CURRENT and MANIFEST files are always copied.
 
 ```
 {
@@ -182,10 +182,10 @@ Below is the content of this snapshot's manifest file. Only the sst files are li
     }
 }
 ```
-### 2nd snapshot files and manifest
+### 2nd Snapshot
 
-The second snapshot only copies the new "000031" sst files off-cluster.
-All the other files in the directory are already off-cluster so they become entries in the manifest instead of being copied off-cluster.
+The second snapshot copies the new "000031" sst files.
+All the other files in the directory have been copied off-cluster so they become entries in this snapshots manifest. 
 
 ```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
