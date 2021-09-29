@@ -122,7 +122,7 @@ The following diagram shows the how the sst snapshot files are copied and added 
 
 ![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
 
-The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'
+The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'. For brevity the manifest JSON only shows the sst files in each snapshots.
 
 ### 1st Snapshot
 
@@ -764,10 +764,12 @@ total 16
 ## Restore Points, Backup Retention, and File Removal
 
 The following diagram illustrates the relationship between restore points, backup retention, and when files are removed from off-cluster storage.
-For this example, backups are done weekly, the backup retention period is 5 weeks as are the restore points, and there is a customer retention policy to remove files on or after 5 weeks.
+For this example, backups are done weekly, the backup retention period is 5 weeks, there are 5 restore points, and there is a customer retention policy to remove files on or after 5 weeks.
 
-![image](https://user-images.githubusercontent.com/84997113/135335525-a0f3f166-9208-4328-af6e-96ef8a58e600.png)
+### Restore Points, Backup Retention, and File Removal Diagram
 
-Restore points are a mechanism that allows users to restore files beyond the backup retention time up to a set number of successful backups. For files that change slowly, such as the 21 and 27 files in the example, restore points will move these files to update their timestamp and ensure restore points have all files for a complete restore.
+![image](https://user-images.githubusercontent.com/84997113/135336979-36a07012-620c-4fc9-b467-6737c68ddcec.png)
 
-All files from the 1st through the 3rd snapshot are removed except for files 21 and 27 which are moved so the 2 restore points in the 4th and 5th snapshots have all necessary files.
+Restore points are the number of successful backups needed to cover the backup retention period. In this example both the retention points and backup retention are in weeks. If the backup retention time period were in weeks and backups done daily, 35 restore points would be required to cover the backup retention timeframe. For files that change slowly, such as the 21 and 27 files in the example, restore points will move these files to update their timestamp and ensure restore points have all files neededfor a complete restore.
+
+All files from the 1st through the 3rd snapshot are removed except for files 21 and 27 which are moved to update their timestamps to coincide with the 4th snapshot. The 5 week customer retention policy would remove files 21 and 27 if they weren't moved.
