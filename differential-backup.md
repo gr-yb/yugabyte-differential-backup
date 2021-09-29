@@ -49,14 +49,11 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
   * Load the previous' backup manifest and determine which files are new.
 
 * Invoke primitives to copy and restore files instead of the directory copy primitives in use by the current distributed backup.
-
   * Iterate through the manifest dictionary and invoke the off-cluster file copy primitive.
 
 * Determine what files to delete off-cluster.
-
    *  Files are removed when they exist for longer than the backup retention period.  
-      
-    *  Iterate through the files in the manifest to remove as needed using the file delete primitive.
+   *  Iterate through the files in the manifest to remove as needed using the file delete primitive.
 
 ## Manifest file structure
 
@@ -90,7 +87,7 @@ Restore points are explained in the section [Restore Points,  Backup Retention, 
 
 ## Restores
 
-Restores for differential backups leverage the current distributed backup functionality but instead of copying directories it copies files.
+Restores for differential backups leverage the current distributed backup functionality but instead of copying directories differential backup restores copy files.
 
 The process is to retrieve the manifest from the user selected snapshot, get the manifest,  and iterate through the files in the manifest copying the files. The post-processing once files are copied is the same as is done by the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program.
 
