@@ -36,7 +36,7 @@ After an in-cluster snapshot backup is created, the differential backup does the
 
 * Based on the backup retention time, remove files from off-cluster storage that are not part of a snapshot that is still inside the retention time window.
 
-# Design
+## Design
 
 Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program. This approach leverages all the complexities yb_backup.py addresess such as distributed backups, replication factor, and so forth. These are the action implemented to accomplish a differential backup:
 
@@ -48,7 +48,7 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
   * Use a naming convention for the manifest file to determine which is the manifest for the previous backup (or other mechanism) .
   * Load the previous' backup manifest and determine which files are new.
 
-* Invoke primitives to copy and restore files instead of current directory based primitives.
+* Invoke primitives to copy and restore files instead ofdirectory copy primitives in use by the current distributed backup.
 
   * Iterate through the manifest dictionary and invoke the off-cluster file copy primitive.
 
@@ -56,7 +56,24 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
 
    *  Files are removed when they exist for longer than the backup retention period and the number of restore points. 
       *  Restore points are the number of successful backups completed before the backup retention period. The interaction between retention points and backup retention period is detailed [here](#restore-points-and-backup-retention-period).
-    *  Iterate through the files in the manifest to remove and use the file delete primitive. files as needed.
+    *  Iterate through the files in the manifest to remove as needed using the file delete primitive.
+
+## Manifest file structure
+
+This is the proposed JSON structure for the manifest file. Additional fields may be added during implementation:
+```
+{
+    "table_id": {
+        "tablet_id": {
+            "sst_file": {
+                "location": "URI",
+                "file_timestamp": "epoch_time_value",
+                "version": 1
+            }
+        }
+    }
+}
+```
 
 ## Example
 
@@ -83,57 +100,89 @@ drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a7
 Each of the snapshot directories has 3 types of files: MANIFEST, CURRENT, and sst.
 The MANIFEST and CURRENT files are always copied in each snapshot but only the new sst files in each snapshot are copied off-cluster.
 
-The following diagram shows the how the snapshot files are copied once and added to the manifest. The boxes represent the sst files and the arrows traverse the snapshots where the sst file is in the manifest: 
+The following diagram shows the how the sst snapshot files are copied and added to the manifest. The boxes are when an sst file is copied and the arrows represent the file is in the manifest until the snapsshot the arrow ends.  For example, the sst file 000021 is copied in the 1st snapshot and is in the manifest from the 2nd to the 5th snapshot. 
 
 ![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
 
+The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'
 
-   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed.
-
-
-
-The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
-
-In the example the snapshots are stored in this directory for table id 000030ad000030008000000000004000 and tablet id 000030ad000030008000000000004000:
-These are the directories for each snapshot and below that are the contents of each directory 
-
-```
-drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
-drwxr-xr-x  16 gr  staff   512B Sep 24 01:37 81b0ce71-21fc-402f-8af3-2dea4cc7a7a9
-drwxr-xr-x  18 gr  staff   576B Sep 24 01:39 83a006ce-40e5-408e-8f03-fba2e1c5f546
-drwxr-xr-x  14 gr  staff   448B Sep 24 01:41 7f3c9719-69a6-4eb7-a86e-0ad368b6a322
-drwxr-xr-x  16 gr  staff   512B Sep 24 01:43 24ebc93b-92a1-43cd-b177-699636f47287
-drwxr-xr-x  10 gr  staff   320B Sep 24 01:45 1a92c67f-8a31-42e2-b45e-cae8a986334b
-drwxr-xr-x  12 gr  staff   384B Sep 24 01:47 39c24b4f-a9db-4318-9e04-c7edac3a4fd1
-drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a75
-```
-
-Lines below that start with *** indicate files that are copied to off-cluster storage.
-
-The intents directory and the MANIFEST and CURRENT files are always copied off-cluster.
-
-### First snapshot directory
+### 1st snapshot file and manifest
 
 The first snapshot copies all files to off-cluster storage.
 
+These are the files in 1st snapshot directory 
+
 ```
-./4160b771-2620-44f2-a482-3f94e796aefc:
-total 512064
-*** -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
-*** -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
-*** -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
-*** -rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
-*** -rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
-*** -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
-*** -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
-*** -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:35 intents
-*** -rw-r--r--  1 gr  staff    10K Sep 24 01:35 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:35 CURRENT
-*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:35 MANIFEST-000032
+4160b771-2620-44f2-a482-3f94e796aefc:
+-rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
+-rw-r--r--  5 gr  staff   81408353 Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  3 gr  staff      66314 Sep 24 01:33 000028.sst
+-rw-r--r--  3 gr  staff        317 Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff     551333 Sep 24 01:35 000030.sst
+-rw-r--r--  3 gr  staff   15631584 Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:35 CURRENT
+-rw-r--r--  1 gr  staff      10258 Sep 24 01:35 MANIFEST-000011
+-rw-r--r--  1 gr  staff       2379 Sep 24 01:35 MANIFEST-000032
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
+
+./tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots/4160b771-2620-44f2-a482-3f94e796aefc/intents:
+-rw-r--r--  1 gr  staff   16 Sep 24 01:35 CURRENT
+-rw-r--r--  1 gr  staff  704 Sep 24 01:35 MANIFEST-000010
 ```
 
-### Second snapshot directory
+Below is the content of this snapshot's manifest file. Only the sst files are listed as the CURRENT and MANIFEST files are always copied.
+
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000021.sst": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:24:28.555850452",
+                "version": 1
+            },
+            "000021.sst.sblock.0": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:24:28.555487300",
+                "version": 1
+            },
+            "000027.sst": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:33:54.949000435",
+                "version": 1
+            },
+            "000027.sst.sblock.0": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:33:54.948762402",
+                "version": 1
+            },
+            "000028.sst": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:33:46.858613591",
+                "version": 1
+            },
+            "000028.sst.sblock.0": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:33:46.858338914",
+                "version": 1
+            },
+            "000030.sst": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:35:17.452900637",
+                "version": 1
+            },
+            "000030.sst.sblock.0": {
+                "location": "URI",
+                "file_timestamp": "2021-09-24 01:35:17.452429701",
+                "version": 1
+            }
+        }
+    }
+}
+```
+### 2nd snapshot files and manifest
 
 The second snapshot only copies the new "000031" sst files off-cluster.
 All the other files in the directory are already off-cluster so they become entries in the manifest instead of being copied off-cluster.
