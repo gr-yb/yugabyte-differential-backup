@@ -83,7 +83,7 @@ These must be in place to implement differential backup:
       * Backup history retention time
       * Restore_points to retain ←- when do I expire? When do we move slowly changing files?
 
-Restore points are described in the ![Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal) section.
+Restore points are described in the [Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal) section.
 
 ## Restores
 
