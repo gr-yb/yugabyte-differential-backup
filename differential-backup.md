@@ -101,7 +101,9 @@ Each of the snapshot directories has 3 types of files: MANIFEST, CURRENT, and ss
 The MANIFEST and CURRENT files are always copied in each snapshot but only the new sst files in each snapshot are copied off-cluster.
 
 The following diagram shows the how the sst snapshot files are copied and added to the manifest. The boxes are when an sst file is copied and the arrows represent the file is in the manifest until the snapsshot the arrow ends.  For example, the sst file 000021 is copied in the 1st snapshot and is in the manifest from the 2nd to the 5th snapshot. 
+
 #### Differential Backup Diagram
+
 ![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
 
 The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'
@@ -185,25 +187,30 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 ### 2nd Snapshot
 
 As shown in the [Differential Backup diagram](####differential-backup-diagram), the second snapshot copies the new "000031" sst files.
-All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshots manifest. 
+All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshot's manifest. 
 
 #### Files
 ```
-./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
--rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
--rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
--rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
--rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
--rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
--rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
--rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
--rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
-drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
--rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
--rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
--rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
+81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
+-rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
+-rw-r--r--  5 gr  staff   81408353 Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  3 gr  staff      66314 Sep 24 01:33 000028.sst
+-rw-r--r--  3 gr  staff        317 Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff     551333 Sep 24 01:35 000030.sst
+-rw-r--r--  3 gr  staff   15631584 Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  2 gr  staff     754925 Sep 24 01:37 000031.sst
+-rw-r--r--  2 gr  staff   20169409 Sep 24 01:37 000031.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:37 CURRENT
+-rw-r--r--  1 gr  staff      10884 Sep 24 01:37 MANIFEST-000011
+-rw-r--r--  1 gr  staff       2783 Sep 24 01:37 MANIFEST-000033
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:37 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff   16 Sep 24 01:37 CURRENT
+-rw-r--r--  1 gr  staff  814 Sep 24 01:37 MANIFEST-000010
 ```
 #### Manifest
 ```
@@ -265,56 +272,136 @@ drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
 }
 ```
 
-### Third snapshot directory
+### 3rd snapshot
 
-The third  snapshot copies the new '32' sst files and adds their metadata to the manifest.
+As shown in the [Differential Backup diagram](####-differential-backup-diagram), the 3rd snapshot copies the new "000032" sst files.
+All the other files in the directory have been copied off-cluster so they become entries in this snapshots manifest. 
 
-Again as in the second snapshots all previously copied files' storage locations are added to manifest for this snapshot
+#### Files
 
 ```
-./83a006ce-40e5-408e-8f03-fba2e1c5f546:
-total 593696
--rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
--rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
--rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
--rw-r--r--  3 gr  staff   317B Sep 24 01:33 000028.sst.sblock.0
--rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
--rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
--rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
--rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
--rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
-*** -rw-r--r--  1 gr  staff    19M Sep 24 01:39 000032.sst.sblock.0
-*** -rw-r--r--  1 gr  staff   672K Sep 24 01:39 000032.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:39 intents
-*** -rw-r--r--  1 gr  staff    11K Sep 24 01:39 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:39 CURRENT
-*** -rw-r--r--  1 gr  staff   3.1K Sep 24 01:39 MANIFEST-000034
+83a006ce-40e5-408e-8f03-fba2e1c5f546:
+-rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
+-rw-r--r--  5 gr  staff   81408353 Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  3 gr  staff      66314 Sep 24 01:33 000028.sst
+-rw-r--r--  3 gr  staff        317 Sep 24 01:33 000028.sst.sblock.0
+-rw-r--r--  3 gr  staff     551333 Sep 24 01:35 000030.sst
+-rw-r--r--  3 gr  staff   15631584 Sep 24 01:35 000030.sst.sblock.0
+-rw-r--r--  2 gr  staff     754925 Sep 24 01:37 000031.sst
+-rw-r--r--  2 gr  staff   20169409 Sep 24 01:37 000031.sst.sblock.0
+-rw-r--r--  1 gr  staff     688366 Sep 24 01:39 000032.sst
+-rw-r--r--  1 gr  staff   19410778 Sep 24 01:39 000032.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:39 CURRENT
+-rw-r--r--  1 gr  staff      11510 Sep 24 01:39 MANIFEST-000011
+-rw-r--r--  1 gr  staff       3187 Sep 24 01:39 MANIFEST-000034
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:39 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff   16 Sep 24 01:39 CURRENT
+-rw-r--r--  1 gr  staff  924 Sep 24 01:39 MANIFEST-000010
+```
+
+#### Manifest
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000021.sst": {
+                "location": "URI_of_file_000021.sst",
+                "file_timestamp": "2021-09-24 01:24:28.555850452",
+                "version": 1
+            },
+            "000021.sst.sblock.0": {
+                "location": "URI_of_file_000021.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:24:28.555487300",
+                "version": 1
+            },
+            "000027.sst": {
+                "location": "URI_of_file_000027.sst",
+                "file_timestamp": "2021-09-24 01:33:54.949000435",
+                "version": 1
+            },
+            "000027.sst.sblock.0": {
+                "location": "URI_of_file_000027.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:54.948762402",
+                "version": 1
+            },
+            "000028.sst": {
+                "location": "URI_of_file_000028.sst",
+                "file_timestamp": "2021-09-24 01:33:46.858613591",
+                "version": 1
+            },
+            "000028.sst.sblock.0": {
+                "location": "URI_of_file_000028.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:46.858338914",
+                "version": 1
+            },
+            "000030.sst": {
+                "location": "URI_of_file_000030.sst",
+                "file_timestamp": "2021-09-24 01:35:17.452900637",
+                "version": 1
+            },
+            "000030.sst.sblock.0": {
+                "location": "URI_of_file_000030.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:35:17.452429701",
+                "version": 1
+            },
+            "000031.sst": {
+                "location": "URI_of_file_000031.sst",
+                "file_timestamp": " 2021-09-24 01:37:22.778258342",
+                "version": 1
+            },
+            "000031.sst.sblock.0": {
+                "location": "URI_of_file_000031.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:37:22.777837785",
+                "version": 1
+            },
+            "000032.sst": {
+                "location": "URI_of_file_000032.sst",
+                "file_timestamp": "2021-09-24 01:37:22.778258342",
+                "version": 1
+            },
+            "000032.sst.sblock.0": {
+                "location": "URI_of_file_000032.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:39:27.857307407",
+                "version": 1
+            }
+        }
+    }
+}
 ```
 
 ### Fourth snapshot directory
 
-The fourth snapshot copies the new '33' and '34' files off-cluster.
+The fourth snapshot copies the new '000033' and '000034' files off-cluster.
 
-The manifest entry for this snapshot does not have  files 28, 30, 31, and 32 from the previous snapshot. These files have been compacted and replaced by files 33 and 34. 
+The manifest entry for this snapshot does not have files 28, 30, 31, and 32 sst files from the previous snapshot as these files have been compacted
 
-Files 21 and 27 are still present in this snapshot. Only files 21 and 27  from the third snapshot.
+Files 21 and 27 are still present in this snapshot.
 
 ```
 ./7f3c9719-69a6-4eb7-a86e-0ad368b6a322:
-total 631264
--rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
--rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
--rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
--rw-r--r--  5 gr  staff   2.8M Sep 24 01:33 000027.sst
-*** -rw-r--r--  2 gr  staff    52M Sep 24 01:39 000033.sst.sblock.0
-*** -rw-r--r--  2 gr  staff   1.8M Sep 24 01:39 000033.sst
-*** -rw-r--r--  2 gr  staff    18M Sep 24 01:41 000034.sst.sblock.0
-*** -rw-r--r--  2 gr  staff   671K Sep 24 01:41 000034.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:41 intents
-*** -rw-r--r--  1 gr  staff    12K Sep 24 01:41 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:41 CURRENT
-*** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:41 MANIFEST-000036
+total 620864
+-rw-r--r--  5 gr  staff    7212668 Sep 24 01:24 000021.sst
+-rw-r--r--  5 gr  staff  150036596 Sep 24 01:24 000021.sst.sblock.0
+-rw-r--r--  5 gr  staff    2886822 Sep 24 01:33 000027.sst
+-rw-r--r--  5 gr  staff   81408353 Sep 24 01:33 000027.sst.sblock.0
+-rw-r--r--  2 gr  staff    1925418 Sep 24 01:39 000033.sst
+-rw-r--r--  2 gr  staff   54738545 Sep 24 01:39 000033.sst.sblock.0
+-rw-r--r--  2 gr  staff     687498 Sep 24 01:41 000034.sst
+-rw-r--r--  2 gr  staff   18945951 Sep 24 01:41 000034.sst.sblock.0
+-rw-r--r--  1 gr  staff         16 Sep 24 01:41 CURRENT
+-rw-r--r--  1 gr  staff      12674 Sep 24 01:41 MANIFEST-000011
+-rw-r--r--  1 gr  staff       2380 Sep 24 01:41 MANIFEST-000036
+drwxr-xr-x  4 gr  staff        128 Sep 24 01:41 intents
+
+./intents:
+total 16
+-rw-r--r--  1 gr  staff    16 Sep 24 01:41 CURRENT
+-rw-r--r--  1 gr  staff  1034 Sep 24 01:41 MANIFEST-0000106
 ```
 
 ### Fifth snapshot directory
