@@ -101,7 +101,7 @@ Each of the snapshot directories has 3 types of files: MANIFEST, CURRENT, and ss
 The MANIFEST and CURRENT files are always copied in each snapshot but only the new sst files in each snapshot are copied off-cluster.
 
 The following diagram shows the how the sst snapshot files are copied and added to the manifest. The boxes are when an sst file is copied and the arrows represent the file is in the manifest until the snapsshot the arrow ends.  For example, the sst file 000021 is copied in the 1st snapshot and is in the manifest from the 2nd to the 5th snapshot. 
-
+#### Differential Backup Diagram
 ![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
 
 The next sections list the in-cluster files and the manifest file for each snapshot of table_id '000030ad000030008000000000004000' and the tablet_id '4b90c92c6a4b4a3aa03c6f941a8c7d1b'
@@ -132,7 +132,7 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 -rw-r--r--  1 gr  staff  704 Sep 24 01:35 MANIFEST-000010
 ```
 
-The manifes only stores the sst files since the CURRENT and MANIFEST files are always copied.
+The manifest only stores the sst files since the CURRENT and MANIFEST files are always copied.
 
 ```
 {
@@ -184,7 +184,8 @@ The manifes only stores the sst files since the CURRENT and MANIFEST files are a
 ```
 ### 2nd Snapshot
 
-The second snapshot copies the new "000031" sst files.
+As seen in the [Differential Backup diagram](####differential-backup-diagram)
+diagram The second snapshot copies the new "000031" sst files.
 All the other files in the directory have been copied off-cluster so they become entries in this snapshots manifest. 
 
 ```
