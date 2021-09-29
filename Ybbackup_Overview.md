@@ -40,4 +40,4 @@ the run func is driven by the input arguement args.command with the following va
 
 
 
-![ybBackupDiagram.drawio](/Users/markarquette/Desktop/yb_backup_differnetial/resources/ybBackupDiagram.drawio.png)
+![ybBackupDiagram.drawio](./resources/ybBackupDiagram.drawio.png)
