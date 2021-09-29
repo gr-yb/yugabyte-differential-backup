@@ -615,17 +615,17 @@ From the example, for a backup retention window of 6 minutes the first files rem
 # Implementation
 
 * Add yb_create_differential command option
-* Yb_backup create_differential
-   * Parameters:
-      * Last_backup_location ←- where is my manifest?
-      * Restore_points to retain ←- when do I expire?
-      * Recopy_threshold ←- when do we recopy slowly changing files
+* yb_backup create_differential
+   * Parameters: (in addition to the normal create parameters)
+      * --last_backup_location ←- where is my manifest?
+      * --restore_points to retain ←- when do I expire?
+      * --recopy_threshold ←- when do we recopy slowly changing files
       * Backup history retention time
 
 
-# Restore Points and Backup Retention Period
+# Restore Points and Backup Retention Period Interaction
 
-In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set though configuration.
+In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set through configuration.
 
-Files that would be removed by backup retention time would be moved to a location where restore points use to recover.
-gr@mbPro ~/YB/differentialBackup %
+Files that would be removed by backup retention time would be moved to a location where valid restore points can be used to recover. The most common case is the slowly changing table that may not get updated enough to not be expired from the backup. In this case, we will use the blob storage providers "move" facility to bring it into the current backup. This threshold will be controlled by the "recopy_threshold".
+
