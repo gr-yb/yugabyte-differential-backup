@@ -38,24 +38,24 @@ After an in-cluster snapshot backup is created, the differential backup does the
 
 ## Design
 
-Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program. This approach leverages all the complexities yb_backup.py addresess such as distributed backups, replication factor, and so forth. These are the action implemented to accomplish a differential backup:
+Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program. This approach leverages all the complexities yb_backup.py addresess such as distributed backups, replication factor, and so forth. These are the actions to be implemented to accomplish a differential backup:
 
 * Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using python dictionaries and persisted in JSON files that are copied off-cluster.
 
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
 
   * Each manifest file is persisted in off-cluster storage as is the SnapshotInfoPB and YSQLDump files (for SQL backups)
-  * Use a naming convention for the manifest file to determine which is the manifest for the previous backup (or other mechanism) .
+    * Use a naming convention for the manifest file to determine which is the manifest for the previous backup or use the same file name and store the file separately with each snapshot. 
   * Load the previous' backup manifest and determine which files are new.
 
-* Invoke primitives to copy and restore files instead ofdirectory copy primitives in use by the current distributed backup.
+* Invoke primitives to copy and restore files instead of the directory copy primitives in use by the current distributed backup.
 
   * Iterate through the manifest dictionary and invoke the off-cluster file copy primitive.
 
 * Determine what files to delete off-cluster.
 
-   *  Files are removed when they exist for longer than the backup retention period and the number of restore points. 
-      *  Restore points are the number of successful backups completed before the backup retention period. The interaction between retention points and backup retention period is detailed [here](#restore-points-and-backup-retention-period).
+   *  Files are removed when they exist for longer than the backup retention period.  
+      
     *  Iterate through the files in the manifest to remove as needed using the file delete primitive.
 
 ## Manifest file structure
@@ -205,7 +205,8 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 ```
 ### 2nd Snapshot
 
-As shown in the [Differential Backup diagram](####-differential-backup-diagram), the second snapshot copies the new "000031" sst files.
+As shown in the [Differential Backup diagram](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
+, the second snapshot copies the new "000031" sst files.
 All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshot's manifest. 
 
 #### Files
@@ -767,7 +768,7 @@ total 16
 ## Restore Points,  Backup Retention, and File Removal
 
 The following diagram illustrates the relationship between restore points, backup retention, and when files are removed from off-cluster storage.
-For this example, backups are done weekly, the backup retention period is 3 weeks, restore points is 2, and there is a customer retention policy to remove files on or after 5 weeks.
+For this example, backups are done weekly, the backup retention period is 5 weeks as are the restore points, and there is a customer retention policy to remove files on or after 5 weeks.
 
 ![image](https://user-images.githubusercontent.com/84997113/135267643-fcc8bbf8-33a8-482d-a1b6-e27f7b16a839.png)
 
