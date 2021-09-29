@@ -57,7 +57,7 @@ Differential backups will be implemented within the [yb_backup.py](https://githu
 
 ## Manifest file structure
 
-This is the proposed JSON structure for the manifest file. Additional fields may be added during implementation:
+This is the proposed JSON structure for the manifest file. Fields and structure may change through development iterations.
 ```
 {
     "table_id": {
@@ -84,6 +84,8 @@ These must be in place to implement differential backup:
       * Restore_points to retain ←- when do I expire? When do we move slowly changing files?
 
 Restore points are explained in the section [Restore Points,  Backup Retention, and File Removal](https://github.com/gr-yb/yugabyte-design/blob/main/differential-backup.md#restore-points--backup-retention-and-file-removal).
+[Restore Points,  Backup Retention, and File Removal](#restore-points,-backup-retention,-and-file-removal)
+
 
 ## Restores
 
@@ -761,7 +763,7 @@ total 16
 }
 ```
 
-## Restore Points,  Backup Retention, and File Removal
+## Restore Points, Backup Retention, and File Removal
 
 The following diagram illustrates the relationship between restore points, backup retention, and when files are removed from off-cluster storage.
 For this example, backups are done weekly, the backup retention period is 5 weeks as are the restore points, and there is a customer retention policy to remove files on or after 5 weeks.
