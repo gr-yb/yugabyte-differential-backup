@@ -205,8 +205,7 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 ```
 ### 2nd Snapshot
 
-As shown in the [Differential Backup diagram](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
-, the second snapshot copies the new "000031" sst files.
+As shown in the [Differential Backup diagram](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png), the second snapshot copies the new "000031" sst files.
 All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshot's manifest. 
 
 #### Files
@@ -294,7 +293,7 @@ total 16
 
 ### 3rd snapshot
 
-As shown in the [Differential Backup diagram](####-differential-backup-diagram), the 3rd snapshot copies the new "000032" sst files.
+As shown in the [Differential Backup diagram](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png), the 3rd snapshot copies the new "000032" sst files.
 All the other files in the directory have been copied off-cluster so they become entries in this snapshots manifest. 
 
 #### Files
