@@ -110,7 +110,7 @@ The next sections list the in-cluster files and the manifest file for each snaps
 
 The first snapshot copies all files to off-cluster storage.
 
-These are the files in the 1st snapshot directory 
+#### Files
 
 ```
 4160b771-2620-44f2-a482-3f94e796aefc:
@@ -132,7 +132,7 @@ drwxr-xr-x  4 gr  staff        128 Sep 24 01:35 intents
 -rw-r--r--  1 gr  staff  704 Sep 24 01:35 MANIFEST-000010
 ```
 
-The manifest only stores the sst files since the CURRENT and MANIFEST files are always copied.
+#### Manifest
 
 ```
 {
@@ -184,13 +184,12 @@ The manifest only stores the sst files since the CURRENT and MANIFEST files are 
 ```
 ### 2nd Snapshot
 
-As seen in the [Differential Backup diagram](####differential-backup-diagram)
-diagram The second snapshot copies the new "000031" sst files.
-All the other files in the directory have been copied off-cluster so they become entries in this snapshots manifest. 
+As shown in the [Differential Backup diagram](####differential-backup-diagram), the second snapshot copies the new "000031" sst files.
+All the other files in the directory have been copied off-cluster in the previous snapshot so they are entries in this snapshots manifest. 
 
+#### Files
 ```
 ./81b0ce71-21fc-402f-8af3-2dea4cc7a7a9:
-total 552944
 -rw-r--r--  5 gr  staff   143M Sep 24 01:24 000021.sst.sblock.0
 -rw-r--r--  5 gr  staff   6.9M Sep 24 01:24 000021.sst
 -rw-r--r--  5 gr  staff    78M Sep 24 01:33 000027.sst.sblock.0
@@ -199,12 +198,71 @@ total 552944
 -rw-r--r--  3 gr  staff    65K Sep 24 01:33 000028.sst
 -rw-r--r--  3 gr  staff    15M Sep 24 01:35 000030.sst.sblock.0
 -rw-r--r--  3 gr  staff   538K Sep 24 01:35 000030.sst
-*** -rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
-*** -rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
-*** drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
-*** -rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
-*** -rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
-*** -rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
+-rw-r--r--  2 gr  staff    19M Sep 24 01:37 000031.sst.sblock.0
+-rw-r--r--  2 gr  staff   737K Sep 24 01:37 000031.sst
+drwxr-xr-x  4 gr  staff   128B Sep 24 01:37 intents
+-rw-r--r--  1 gr  staff    11K Sep 24 01:37 MANIFEST-000011
+-rw-r--r--  1 gr  staff    16B Sep 24 01:37 CURRENT
+-rw-r--r--  1 gr  staff   2.7K Sep 24 01:37 MANIFEST-000033
+```
+#### Manifest
+```
+{
+    "000030ad00003000800000000000400": {
+        "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
+            "000021.sst": {
+                "location": "URI_of_file_000021.sst",
+                "file_timestamp": "2021-09-24 01:24:28.555850452",
+                "version": 1
+            },
+            "000021.sst.sblock.0": {
+                "location": "URI_of_file_000021.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:24:28.555487300",
+                "version": 1
+            },
+            "000027.sst": {
+                "location": "URI_of_file_000027.sst",
+                "file_timestamp": "2021-09-24 01:33:54.949000435",
+                "version": 1
+            },
+            "000027.sst.sblock.0": {
+                "location": "URI_of_file_000027.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:54.948762402",
+                "version": 1
+            },
+            "000028.sst": {
+                "location": "URI_of_file_000028.sst",
+                "file_timestamp": "2021-09-24 01:33:46.858613591",
+                "version": 1
+            },
+            "000028.sst.sblock.0": {
+                "location": "URI_of_file_000028.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:33:46.858338914",
+                "version": 1
+            },
+            "000030.sst": {
+                "location": "URI_of_file_000030.sst",
+                "file_timestamp": "2021-09-24 01:35:17.452900637",
+                "version": 1
+            },
+            "000030.sst.sblock.0": {
+                "location": "URI_of_file_000030.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:35:17.452429701",
+                "version": 1
+            },
+            "000031.sst": {
+                "location": "URI_of_file_000031.sst",
+                "file_timestamp": " 2021-09-24 01:37:22.778258342",
+                "version": 1
+            },
+            "000031.sst.sblock.0": {
+                "location": "URI_of_file_000031.sst.sblock.0",
+                "file_timestamp": "2021-09-24 01:37:22.777837785",
+                "version": 1
+            }
+        }
+    }
+}
 ```
 
 ### Third snapshot directory
