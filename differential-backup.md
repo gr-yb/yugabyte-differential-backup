@@ -768,6 +768,6 @@ For this example, backups are done weekly, the backup retention period is 5 week
 
 ![image](https://user-images.githubusercontent.com/84997113/135336979-36a07012-620c-4fc9-b467-6737c68ddcec.png)
 
-Restore points are the number of successful backups needed to cover the backup retention period. In this example both the retention points and backup retention are in weeks so both are 5. If the backup retention time period were in weeks and snapshots taken daily, 35 restore points would be required to cover the backup retention timeframe. For files that change slowly, such as the 21 and 27 files in the example, restore points will move these files to update their timestamp and ensure restore points have all files neededfor a complete restore.
+Restore points are the number of successful backups needed to cover the backup retention period. In this example both the retention points and backup retention are in weeks so both are 5. For files that change slowly, such as the 21 and 27 files in the example, restore points will move these files to update their timestamp and ensure restore points have all files neededfor a complete restore.
 
 All files from the 1st through the 3rd snapshot are removed except for files 21 and 27 which are moved to update their timestamps to match the 4th snapshot. The 5 week customer retention policy would have removed files 21 and 27 if they were not moved.
