@@ -17,8 +17,8 @@ After an in-cluster snapshot backup is created, the differential backup does the
 
 ### Step 1. Retrieve the previous snapshot manifest
 
-* A manifest or dictionary of all the files from the previous backup is used to determine which files are already stored off-cluster.
-* For the first backup all files are copied off-cluster and the manifest with the files' off-cluster locations.
+* A manifest or dictionary of all the files from the previous snapshot is used to determine which files are already stored off-cluster.
+* For the first backup all files are copied off-cluster along with the manifest file with the files off-cluster locations.
 
 ### Step 2. Create the current manifest
 
@@ -38,67 +38,9 @@ After an in-cluster snapshot backup is created, the differential backup does the
 
 # Design
 
-Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program as per the following:
+Differential backups will be implemented within the [yb_backup.py](https://github.com/yugabyte/yugabyte-db/blob/master/managed/devops/bin/yb_backup.py) program. This approach leverages all the complexities yb_backup.py addresess such as distributed backups, replication factor, and so forth. These are the action implemented to accomplish a differential backup:
 
-* Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using  python dictionaries and persisted as JSON in files that are copied off-cluster.
-
-   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed.
-
-```
-import pprint
-import json
-
-pp = pprint.PrettyPrinter( indent= 4)
-
-manifest = {}
-manifest['table-id-1'] = {}
-pp.pprint(manifest)
-print("\n\n")
-
-manifest['table-id-1']['tablet-a1']={}
-pp.pprint(manifest)
-print("\n\n")
-
-manifest['table-id-1']['tablet-a1']['sst-file-1']={}
-manifest['table-id-1']['tablet-a1']['sst-file-1']['location']='myuri'
-manifest['table-id-1']['tablet-a1']['sst-file-1']['timestamp']='time_t_value'
-manifest['table-id-1']['tablet-a1']['sst-file-1']['version']=1
-pp.pprint(manifest)
-print("\n\n")
-
-manifest['table-id-1']['tablet-a2']={}
-manifest['table-id-1']['tablet-a2']['sst-file-1']={}
-manifest['table-id-1']['tablet-a2']['sst-file-1']['location']='myuri-a2'
-manifest['table-id-1']['tablet-a2']['sst-file-1']['version']=1
-manifest['table-id-1']['tablet-a2']['sst-file-1']['timestamp']='mytimestamp'
-pp.pprint(manifest)
-```
-
-   Output
-
-```
-{'table-id-1': {}}
-
-
-
-{'table-id-1': {'tablet-a1': {}}}
-
-
-
-{   'table-id-1': {   'tablet-a1': {   'sst-file-1': {   'location': 'myuri',
-                                                         'timestamp': 'time_t_value',
-                                                         'version': 1}}}}
-
-
-
-{   'table-id-1': {   'tablet-a1': {   'sst-file-1': {   'location': 'myuri',
-                                                         'timestamp': 'time_t_value',
-                                                         'version': 1}},
-                      'tablet-a2': {   'sst-file-1': {   'location': 'myuri-a2',
-                                                         'timestamp': 'mytimestamp',
-                                                         'version': 1}}}}
-
-```
+* Create the manifest with the required meta-data to include table ids, tablet ids, and files in snapshots using python dictionaries and persisted in JSON files that are copied off-cluster.
 
 * Calculate files to copy off-cluster by comparing with previous backup's manifest.
 
@@ -110,18 +52,49 @@ pp.pprint(manifest)
 
   * Iterate through the manifest dictionary and invoke the off-cluster file copy primitive.
 
-* Determine what files to delete off-cluster based on manifest and snapshot files. Files are deleted off-cluster when they exceed the time window for backup retentions and the number of restore points kept. The example that follows illustrates how the removal of files.
+* Determine what files to delete off-cluster.
+
+   *  Files are removed when they exist for longer than the backup retention period and the number of restore points. 
+      *  Restore points are the number of successful backups completed before the backup retention period. The interaction between retention points and backup retention period is detailed [here](#restore-points-and-backup-retention-period).
+    *  Iterate through the files in the manifest to remove and use the file delete primitive. files as needed.
 
 ## Example
 
-A walkthrough of 8 snapshots from a 2 minute interval backup schedule below demonstrate how differential backups work. The snapshots are of a ysql database created with the yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload which creates one table and one tablet. 
+The yb-sample-apps [SqlInserts](https://github.com/yugabyte/yb-sample-apps) workload created the files for this example. The workload creates one table and one tablet. A snapshot schedule with a 2 minute interval ran for 16 minutes to create the snapshot directories.
+
+The snapshot directories are under this table and tablet directory: 
+
+```
+~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
+```
+
+and these are the 8 snapshot directories:
+
+```
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:35 4160b771-2620-44f2-a482-3f94e796aefc
+drwxr-xr-x  16 gr  staff   512B Sep 24 01:37 81b0ce71-21fc-402f-8af3-2dea4cc7a7a9
+drwxr-xr-x  18 gr  staff   576B Sep 24 01:39 83a006ce-40e5-408e-8f03-fba2e1c5f546
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:41 7f3c9719-69a6-4eb7-a86e-0ad368b6a322
+drwxr-xr-x  16 gr  staff   512B Sep 24 01:43 24ebc93b-92a1-43cd-b177-699636f47287
+drwxr-xr-x  10 gr  staff   320B Sep 24 01:45 1a92c67f-8a31-42e2-b45e-cae8a986334b
+drwxr-xr-x  12 gr  staff   384B Sep 24 01:47 39c24b4f-a9db-4318-9e04-c7edac3a4fd1
+drwxr-xr-x  14 gr  staff   448B Sep 24 01:49 ebe990cd-c5f2-4d91-bedc-b3252a4f5a75
+```
+Each of the snapshot directories has 3 types of files: MANIFEST, CURRENT, and sst.
+The MANIFEST and CURRENT files are always copied in each snapshot but only the new sst files in each snapshot are copied off-cluster.
+
+The following diagram shows the how the snapshot files are copied once and added to the manifest. The boxes represent the sst files and the arrows traverse the snapshots where the sst file is in the manifest: 
+
+![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
+
+
+   This is a sample of the python dictionary structure where location is the location of a file's off-cluster storage, time_t_value is epoch time in milliseconds, and version is the number of hard links for the file. Other meta-data may be added as needed.
+
+
 
 The sample app creates one table directory with id 000030ad000030008000000000004000, and has one tablet directory with id 4b90c92c6a4b4a3aa03c6f941a8c7d1b.
 
 In the example the snapshots are stored in this directory for table id 000030ad000030008000000000004000 and tablet id 000030ad000030008000000000004000:
-```
-~/var/data/yb-data/tserver/data/rocksdb/table-000030ad000030008000000000004000/tablet-4b90c92c6a4b4a3aa03c6f941a8c7d1b.snapshots
-```
 These are the directories for each snapshot and below that are the contents of each directory 
 
 ```
@@ -321,9 +294,6 @@ total 692576
 *** -rw-r--r--  1 gr  staff   2.3K Sep 24 01:49 MANIFEST-000041
 ```
 
-This diagram illustrates the files' lifecycle in differential backups
-
-![image](https://user-images.githubusercontent.com/84997113/135130246-3a59e21d-1949-48f0-8862-7b62f9e72ada.png)
 
 ## Off-Cluster File Removals
 
@@ -341,7 +311,7 @@ From the example, for a backup retention window of 6 minutes the first files rem
       * Backup history retention time
 
 
-# Restore points
+# Restore Points and Backup Retention Period
 
 In addition to snapshot recoveries base on time, restore points are a mechanism to restore files beyond the backup history retention up to a discrete number of retention points as set though configuration.
 
