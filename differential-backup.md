@@ -83,7 +83,7 @@ These must be in place to implement differential backup:
       * Backup history retention time
       * Restore_points to retain ←- when do I expire? When do we move slowly changing files?
 
-Restore points are described in the [Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal) section.
+Restore points are described in the ![Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal) section.
 
 ## Restores
 
@@ -643,7 +643,6 @@ total 16
 #### Manifest
 
 ```
-
     "000030ad00003000800000000000400": {
         "4b90c92c6a4b4a3aa03c6f941a8c7d1b": {
             "000036.sst": {
@@ -680,7 +679,6 @@ total 16
     }
 }
 ```
-
 
 ### 8th snapshot directory
 
