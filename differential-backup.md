@@ -83,10 +83,7 @@ These must be in place to implement differential backup:
       * Backup history retention time
       * Restore_points to retain ←- when do I expire? When do we move slowly changing files?
 
-Restore points are explained in the section [Restore Points, Backup Retention, and File Removal](https://github.com/gr-yb/yugabyte-design/blob/main/differential-backup.md#restore-points-backup-retention-and-file-removal).
-
-[Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal)
-
+Restore points are described in the [Restore Points,  Backup Retention, and File Removal](#restore-points-backup-retention-and-file-removal) section.
 
 ## Restores
 
@@ -769,7 +766,7 @@ total 16
 The following diagram illustrates the relationship between restore points, backup retention, and when files are removed from off-cluster storage.
 For this example, backups are done weekly, the backup retention period is 5 weeks as are the restore points, and there is a customer retention policy to remove files on or after 5 weeks.
 
-![image](https://user-images.githubusercontent.com/84997113/135267643-fcc8bbf8-33a8-482d-a1b6-e27f7b16a839.png)
+![image](https://user-images.githubusercontent.com/84997113/135335525-a0f3f166-9208-4328-af6e-96ef8a58e600.png)
 
 Restore points are a mechanism that allows users to restore files beyond the backup retention time up to a set number of successful backups. For files that change slowly, such as the 21 and 27 files in the example, restore points will move these files to update their timestamp and ensure restore points have all files for a complete restore.
 
