@@ -1,10 +1,17 @@
+#!/usr/bin/env python
+#
+# Copyright 2019 YugaByte, Inc. and Contributors
+#
+# Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
+# may not use this file except in compliance with the License. You
+# may obtain a copy of the License at
+#
+# https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 import json
 import string
-import sys
 import uuid
-from datetime import datetime, date
+from datetime import datetime
 
-#import now as now
 '''
 Draft model for python supporting manifest JSON object. 
 Currently only using 1 Class Manifest. Stubbed out other classes for 
