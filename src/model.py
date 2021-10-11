@@ -51,13 +51,13 @@ class Manifest():
         self.manifest_diff_savepoint_number = ""
         self.database_name = ""
         self.database_type = ""
-        self.database_tables = []
-        self.database_objects = []
+        self.database_tables = set()
+        self.database_objects = set()
         self.storage_backup_location = ""
         self.storage_backup_location_type = ""
-        self.storage_table_ids = []
-        self.storage_tablet_ids = []
-        self.storage_files = []
+        self.storage_table_ids = set()
+        self.storage_tablet_ids = set()
+        self.storage_files = set()
         self.storage_table_ids_dict = {}
         self.storage_tablet_ids_dict = {}
         self.storage_files_dict = {}
@@ -84,14 +84,14 @@ class Manifest():
             "manifest_diff_savepoint_number": self.manifest_diff_savepoint_number,
             },
             "database": {
-            "name": self.database_name, "type": self.database_type, "database_tables": self.database_tables,"database_objects": self.database_objects
+            "name": self.database_name, "type": self.database_type, "database_tables": str(self.database_tables),"database_objects": str(self.database_objects)
         },
             "storage": {
                 "backup_location": self.storage_backup_location,
                 "backup_location_type": self.storage_backup_location_type,
-                "table_id": self.storage_table_ids,
-                "tablet_id": self.storage_tablet_ids,
-                "files": self.storage_files
+                "table_id": str(self.storage_table_ids),
+                "tablet_id": str(self.storage_tablet_ids),
+                "files": str(self.storage_files)
             }
             , "backup": {
                 "name": self.backup_name,
