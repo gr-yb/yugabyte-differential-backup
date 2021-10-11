@@ -1,0 +1,20 @@
+
+            ''',{"components": { "database": {
+            "name": self.database_name, "type": self.database_type, "database_tables": self.database_tables,"database_objects": self.database_objects
+        }, "storage": {
+            "backup_location": self.storage_backup_location,
+            "backup_location_type": self.storage_backup_location_type,
+            "table_id": self.storage_table_ids,
+            "tablet_id": self.storage_tablet_ids,
+            "files": self.storage_files
+        }, "backup": {
+            "name": self.backup_name,
+            "create_date": self.create_date,
+            "start_time": self.backup_start_time,
+            "end_time": self.backup_end_time,
+            "message": self.backup_messages,
+            "error": self.backup_errors
+        }
+        }
+        }
+        }'''

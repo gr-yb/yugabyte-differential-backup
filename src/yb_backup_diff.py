@@ -1507,9 +1507,12 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
+# ourstuff search key for our change blocks
+    # new refactor code in diff - inject nice for running each parallel commands on ssh
+    # hard code the nice value ,,, maybe later variable
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
         prefix = pipes.quote(SHA_TOOL_PATH) if not self.args.mac else '/usr/bin/shasum'
-        return "{} {} > {}".format(prefix, file_path, checksum_file_path)
+        return "{} {} > {}".format(prefix, file_path, checksum_file_path) # quote the nice into current args
 
     def create_checksum_cmd(self, file_path, checksum_file_path):
         return self.create_checksum_cmd_not_quoted(

@@ -42,6 +42,7 @@ class Manifest():
     def __init__(self,manifest_id):
         self.manifest_id = ""
         self.manifest_name = ""
+        self.manifest_savepoint_number = ""
         self.manifest_type = ""
         self.manifest_universe_name = ""
         self.manifest_universe_id = ""
@@ -70,28 +71,37 @@ class Manifest():
 
     def to_json_dict(self):
         manifest_json = { "manifest": {
+            "metadata": {
             "manifest_id": self.manifest_id,
-            "create_date": self.create_date,
-            "status": self.status
-            }, "components": {  "database": {
+            "manifest_name": self.manifest_name,
+            "manifest_savepoint_number": self.manifest_savepoint_number,
+            "manifest_type": self.manifest_type,
+            "manifest_universe_name": self.manifest_universe_name,
+            "manifest_universe_id": self.manifest_universe_id,
+            "manifest_create_date": self.manifest_create_date,
+            "manifest_status": self.manifest_status,
+            "manifest_create_date": self.create_date,
+            "manifest_diff_savepoint_number": self.manifest_diff_savepoint_number,
+            },
+            "database": {
             "name": self.database_name, "type": self.database_type, "database_tables": self.database_tables,"database_objects": self.database_objects
-        }, "storage": {
-            "backup_location": self.storage_backup_location,
-            "backup_location_type": self.storage_backup_location_type,
-            "table_id": self.storage_table_ids,
-            "tablet_id": self.storage_tablet_ids,
-            "files": self.storage_files
-        }, "backup": {
-            "name": self.backup_name,
-            "create_date": self.create_date,
-            "start_time": self.backup_start_time,
-            "end_time": self.backup_end_time,
-            "message": self.backup_messages,
-            "error": self.backup_errors
-        }
-        }
-        }
-
+        },
+            "storage": {
+                "backup_location": self.storage_backup_location,
+                "backup_location_type": self.storage_backup_location_type,
+                "table_id": self.storage_table_ids,
+                "tablet_id": self.storage_tablet_ids,
+                "files": self.storage_files
+            }
+            , "backup": {
+                "name": self.backup_name,
+                "create_date": self.create_date,
+                "start_time": self.backup_start_time,
+                "end_time": self.backup_end_time,
+                "message": self.backup_messages,
+                "error": self.backup_errors
+            }
+        }}
         return manifest_json
 
     def json_out(self):
