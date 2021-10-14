@@ -51,23 +51,23 @@ class Manifest():
         self.manifest_diff_savepoint_number = ""
         self.database_name = ""
         self.database_type = ""
-        self.database_tables = set()
-        self.database_objects = set()
+        self.database_tables = dict()
+        self.database_objects = dict()
         self.storage_backup_location = ""
         self.storage_backup_location_type = ""
-        self.storage_table_ids = set()
-        self.storage_tablet_ids = set()
-        self.storage_files = set()
-        self.storage_table_ids_dict = {}
-        self.storage_tablet_ids_dict = {}
-        self.storage_files_dict = {}
+        self.storage_table_ids = dict()
+        self.storage_tablet_ids = dict()
+        self.storage_files = dict()
+        self.storage_table_ids_dict = dict()
+        self.storage_tablet_ids_dict = dict()
+        self.storage_files_dict = dict()
         self.backup_name = ""
         self.backup_id = ""
         self.backup_create_date = ""
         self.backup_start_time = ""
         self.backup_end_time = ""
-        self .backup_messages = []
-        self.backup_errors = []
+        self .backup_messages = dict()
+        self.backup_errors = dict()
 
     def to_json_dict(self):
         manifest_json = { "manifest": {
@@ -112,6 +112,9 @@ class Manifest():
 def main():
     manifest_id = uuid.uuid1()
     test_class = Manifest(manifest_id)
+
+    #load you manifest
+    test_class.backup_name ="test Backup"
     test_class.manifest_id = str(manifest_id)
     test_class.status = "init"
     test_class.database = "ycql"

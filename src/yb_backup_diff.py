@@ -22,6 +22,7 @@ import subprocess
 import traceback
 import time
 import json
+import uuid
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
@@ -30,6 +31,9 @@ from multiprocessing.pool import ThreadPool
 
 import os
 import re
+
+# diff stuff
+import model
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -1400,6 +1404,9 @@ class YBBackup:
         :param tserver_ip: tablet server IP or host name
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
+        #ourstuff where have func like this find_snapshot_files() running the find command with extra attributes with list
+        #files plus directories need find command like one below..
+        #look in manifest of last save point and then compare to current 
         output = self.run_ssh_cmd(
             ['find', data_dir,
              '-mindepth', SNAPSHOT_DIR_DEPTH,
@@ -1417,6 +1424,7 @@ class YBBackup:
         :param snapshot_id: self-explanatory
         :param snapshot_filepath: the top-level directory under which to upload the data directories
         """
+        #ourstuff create similar function
         pool = ThreadPool(self.args.parallelism)
 
         tablets_by_leader_ip = {}
@@ -1928,6 +1936,8 @@ class YBBackup:
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
         self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
+        #ourstuff buld of work here
+        #func to get
         self.timer.log_new_phase("Upload snapshot directories")
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
@@ -1996,7 +2006,8 @@ class YBBackup:
 
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
-
+#ourstuff 6 this is an example of how to check for a manifest as manifest always has same file name
+# note for reference can be executed on any node in the cluster
         try:
             self.download_file(src_sql_dump_path, sql_dump_path)
         except subprocess.CalledProcessError as ex:
@@ -2170,6 +2181,7 @@ class YBBackup:
         return tserver_to_deleted_tablets
 
     def restore_table(self):
+        #ourstuff need to add a if check for if I find manifest
         """
         Restore a table from the backup stored in the given backup path.
         """
@@ -2184,14 +2196,15 @@ class YBBackup:
         #  - Verify that we are restoring a keyspace/namespace (no individual tables for pitr)
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
-
+#ourstuff 5 - if found manifest then do work on diff between the old manifest and new manifest ..
+        #1 put in try catch if there then exception pass
         (metadata_file_path, dump_file_path) = self.download_metadata_file()
         if dump_file_path:
             self.timer.log_new_phase("Create tables via YSQLDump")
             self.import_ysql_dump(dump_file_path)
 
         self.timer.log_new_phase("Import snapshot")
-        snapshot_metadata = self.import_snapshot(metadata_file_path)
+        snapshot_metadata = self.import_snapshot(metadata_file_path) #ourstuff 7 takes proto_buff container and downloads from RocksDB
         snapshot_id = snapshot_metadata['snapshot_id']['new']
         table_ids = list(snapshot_metadata['table'].keys())
 
@@ -2216,6 +2229,11 @@ class YBBackup:
                 logging.info('Downloading list: {}'.format(tablets_by_tserver_to_download))
 
             # Download tablets and get list of deleted tablets.
+            #ourstuff 8 if in diff mode download files not directories adjust the granularity of old backup to new diff for files
+            #this is where unwrap dict(type) for each objects .. tables, tableids etc
+            #where exit here to the func for download files not directories ..
+            #if in diff mode do the func download files else do what they do ..
+            #else do this following line
             tserver_to_deleted_tablets = self.download_snapshot_directories(
                 snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
 
@@ -2312,6 +2330,7 @@ class YBBackup:
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
     def run(self):
+        #roustuff command under create diff create_diff
         try:
             self.post_process_arguments()
             if self.args.command == 'restore':
@@ -2335,5 +2354,7 @@ class YBBackup:
             self.timer.print_summary()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":args
+    manifest_id = uuid.uuid1()
+    test_class = model.Manifest(manifest_id)
     YBBackup().run()
