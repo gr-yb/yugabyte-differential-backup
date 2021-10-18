@@ -1432,12 +1432,15 @@ class YBBackup:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
+        #ourstuff
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
-
+#ourstuff
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+        # add depth for files?
+
         tservers_processed = []
         while len(tserver_ips) > len(tservers_processed):
             for tserver_ip in list(tserver_ips):
@@ -1452,19 +1455,24 @@ class YBBackup:
                             tservers_processed += [tserver_ip]
                     else:
                         tservers_processed += [tserver_ip]
-
+#here is where we find the snapshots
+        #set of results
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
+#ourstuff should write out the list of dir and files and persist
+#transaltes to ssh commands.. out here no code here for metadata somewhere above this line in this func
 
         parallel_uploads = SequencedParallelCmd(self.run_ssh_cmd)
+
         self.prepare_cloud_ssh_cmds(
              parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
              snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         parallel_uploads.run(pool)
+#write out diff manifest to the namespace or location provided in args.. cloud provider, type and namespace
 
     def rearrange_snapshot_dirs(
             self, find_snapshot_dir_results, snapshot_id, tablets_by_tserver_ip):
@@ -1806,6 +1814,8 @@ class YBBackup:
         :param snapshot_filepath: Backup directory under which to create a path
         :return: snapshot id
         """
+        # needs aboslute path
+
         if self.args.snapshot_id:
             logging.info("Using existing snapshot ID: '{}'".format(self.args.snapshot_id))
             snapshot_id = self.args.snapshot_id
@@ -1880,6 +1890,7 @@ class YBBackup:
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
         logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
         self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
+        #ourstuff use this to save the manifest
         self.upload_metadata_and_checksum(metadata_path,
                                           os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
@@ -1933,6 +1944,7 @@ class YBBackup:
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
         self.timer.log_new_phase("Create and upload snapshot metadata")
+        #ourstuff this is where we intercept for saving diff manifest using current code
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
         self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
@@ -1991,6 +2003,9 @@ class YBBackup:
         logging.info(
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
+#ourstuff gus entry point for code
+#might want to reorg this func so not to many dupes, gus
+
     def download_metadata_file(self):
         """
         Download the metadata file for a backup so as to perform a restore based on it.
@@ -2008,6 +2023,7 @@ class YBBackup:
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
 #ourstuff 6 this is an example of how to check for a manifest as manifest always has same file name
 # note for reference can be executed on any node in the cluster
+        #maybe abstract into a new func, generic with a filename test if exist
         try:
             self.download_file(src_sql_dump_path, sql_dump_path)
         except subprocess.CalledProcessError as ex:
