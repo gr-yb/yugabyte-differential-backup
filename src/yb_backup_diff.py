@@ -1406,7 +1406,7 @@ class YBBackup:
         """
         #ourstuff where have func like this find_snapshot_files() running the find command with extra attributes with list
         #files plus directories need find command like one below..
-        #look in manifest of last save point and then compare to current 
+        #look in manifest of last save point and then compare to current
         output = self.run_ssh_cmd(
             ['find', data_dir,
              '-mindepth', SNAPSHOT_DIR_DEPTH,

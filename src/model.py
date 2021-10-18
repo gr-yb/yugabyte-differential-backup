@@ -12,6 +12,9 @@ import string
 import uuid
 from datetime import datetime
 
+from deepdiff import DeepDiff
+
+
 '''
 Draft model for python supporting manifest JSON object. 
 Currently only using 1 Class Manifest. Stubbed out other classes for 
@@ -21,7 +24,13 @@ valid_manifest_status = ['init','vaild','error']
 valid_location_types = ["s3"]
 valid_database_types = ["ycql","ysql"]
 
+manifest_name = "MANIFEST-DIFF"
+
 now = datetime.now()
+
+def diff_dict(dict1, dict2):
+    diff = DeepDiff(dict1, dict2, ignore_order=True)
+    return diff
 
 class Database():
     def __init__(self):
