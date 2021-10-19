@@ -653,7 +653,10 @@ class YBBackup:
                    "For YSQL DB:\n"
                    "    Only one key --keyspace is supported. The script processes the whole DB.\n"
                    "    For creating backup: --keyspace ysql.db1\n"
-                   "    For restoring backup: --keyspace ysql.db1_copy\n",
+                   "    For restoring backup: --keyspace ysql.db1_copy\n"
+                   "For YCQL DIFFERENTIAL BACKUP:\n"
+                   "Keys --keyspace, --table and --table_uuid can be repeated several times."
+                   " only supports ycql as script processes the whole DB",
             formatter_class=RawDescriptionHelpFormatter)
 
         parser.add_argument(
@@ -749,7 +752,7 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys', 'delete'],
+            'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'], #ourstuff
             help='Create, restore or delete the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
@@ -2007,9 +2010,12 @@ class YBBackup:
 #might want to reorg this func so not to many dupes, gus
 
     def download_metadata_file(self):
+        #
         """
         Download the metadata file for a backup so as to perform a restore based on it.
         """
+        #ourstuff at this point curr_manfiest is loaded with some data
+        #is only called in
         if self.args.local_yb_admin_binary:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
@@ -2036,7 +2042,9 @@ class YBBackup:
                 logging.info("Ignoring the exception in downloading of {}: {}".
                              format(src_sql_dump_path, ex))
                 sql_dump_path = None
-
+#need to return the manifest for the backup restoring , MANIFEST is default name
+#may need to change all calls karwgs.. overloaded.. so if no manifest return none.
+        #gus... s
         return (metadata_path, sql_dump_path)
 
     def import_ysql_dump(self, dump_file_path):
@@ -2214,6 +2222,8 @@ class YBBackup:
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 #ourstuff 5 - if found manifest then do work on diff between the old manifest and new manifest ..
         #1 put in try catch if there then exception pass
+        # start of diff .. for restore.
+        #ownload_metadata_file should have a 3 prt return adding manifest of backup restoring
         (metadata_file_path, dump_file_path) = self.download_metadata_file()
         if dump_file_path:
             self.timer.log_new_phase("Create tables via YSQLDump")
@@ -2357,6 +2367,10 @@ class YBBackup:
                 self.restore_keys()
             elif self.args.command == 'delete':
                 self.delete_backup()
+            elif self.args.command == 'create_diff': #ourstuff
+                #follow the same code flow as current code backuo_table
+                #self.backup_table()
+                print("running diff")
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))
@@ -2370,7 +2384,9 @@ class YBBackup:
             self.timer.print_summary()
 
 
-if __name__ == "__main__":args
+if __name__ == "__main__":
     manifest_id = uuid.uuid1()
     test_class = model.Manifest(manifest_id)
     YBBackup().run()
+    print('test run diff')
+    print(test_class.json_out())

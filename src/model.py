@@ -55,7 +55,7 @@ class Manifest():
         self.manifest_type = ""
         self.manifest_universe_name = ""
         self.manifest_universe_id = ""
-        self.manifest_create_date = ""
+        self.manifest_create_date = str(now.strftime("%d/%m/%Y %H:%M:%S"))
         self.manifest_status = ""
         self.manifest_diff_savepoint_number = ""
         self.database_name = ""
@@ -89,7 +89,7 @@ class Manifest():
             "manifest_universe_id": self.manifest_universe_id,
             "manifest_create_date": self.manifest_create_date,
             "manifest_status": self.manifest_status,
-            "manifest_create_date": self.create_date,
+            "manifest_create_date": self.manifest_create_date,
             "manifest_diff_savepoint_number": self.manifest_diff_savepoint_number,
             },
             "database": {
@@ -104,7 +104,7 @@ class Manifest():
             }
             , "backup": {
                 "name": self.backup_name,
-                "create_date": self.create_date,
+                "create_date": self.backup_create_date,
                 "start_time": self.backup_start_time,
                 "end_time": self.backup_end_time,
                 "message": self.backup_messages,
