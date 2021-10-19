@@ -26,13 +26,13 @@ import uuid
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
-from datetime import timedelta
+from datetime import timedelta, date
 from multiprocessing.pool import ThreadPool
 
 import os
 import re
 
-# diff stuff
+# ourstuff
 import model
 
 TABLET_UUID_LEN = 32
@@ -2370,7 +2370,13 @@ class YBBackup:
             elif self.args.command == 'create_diff': #ourstuff
                 #follow the same code flow as current code backuo_table
                 #self.backup_table()
-                logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %('running create_diff')s")
+                logging.INFO(level=logging.INFO, format="%(asctime)s %(levelname)s: %('running create_diff')s")
+                manifest_class.manifest_name = manifest_class.manifest_id
+                manifest_class.manifest_type = 'diff_backup'
+                manifest_class.manifest_status = 'init'
+                manifest_class.backup_create_date = date.today()
+                self.backup_table()
+
                 #print("running diff")
             else:
                 logging.error('Command was not specified')
@@ -2383,11 +2389,12 @@ class YBBackup:
             traceback.print_stack()
         finally:
             self.timer.print_summary()
+            print(manifest_class.json_out()) #ourstuff
 
 
 if __name__ == "__main__":
     manifest_id = uuid.uuid1()
-    test_class = model.Manifest(manifest_id)
+    manifest_class = model.Manifest(manifest_id)
     YBBackup().run()
-    print('test run diff')
-    print(test_class.json_out())
+    #print('test run diff')
+    #print(test_class.json_out())
