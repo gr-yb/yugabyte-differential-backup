@@ -2370,7 +2370,8 @@ class YBBackup:
             elif self.args.command == 'create_diff': #ourstuff
                 #follow the same code flow as current code backuo_table
                 #self.backup_table()
-                print("running diff")
+                logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %('running create_diff')s")
+                #print("running diff")
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))
