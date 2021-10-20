@@ -1500,6 +1500,7 @@ class YBBackup:
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
         print('find_snapshot_dir_results',find_snapshot_dir_results)
         self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
+        self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
         print('local_dirs manifest',self.manifest_class.json_out())
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(

@@ -58,7 +58,6 @@ class Manifest():
         self.manifest_universe_id = ""
         self.manifest_create_date = str(now.strftime("%d/%m/%Y %H:%M:%S"))
         self.manifest_status = ""
-        self.manifest_diff_savepoint_number = ""
         self.database_name = ""
         self.database_type = ""
         self.database_tables = dict()
@@ -79,6 +78,7 @@ class Manifest():
         self.backup_start_time = ""
         self.backup_end_time = ""
         self.backup_local_dirs = dict()
+        self.backup_local_dir_set = []
         self .backup_messages = dict()
         self.backup_errors = dict()
 
@@ -95,7 +95,6 @@ class Manifest():
             "manifest_create_date": self.manifest_create_date,
             "manifest_status": self.manifest_status,
             "manifest_create_date": self.manifest_create_date,
-            "manifest_diff_savepoint_number": self.manifest_diff_savepoint_number,
             },
             "database": {
             "name": self.database_name, "type": self.database_type, "database_tables": str(self.database_tables),"database_objects": str(self.database_objects)
@@ -115,6 +114,7 @@ class Manifest():
                 "start_time": self.backup_start_time,
                 "end_time": self.backup_end_time,
                 "local_directories": str(self.backup_local_dirs),
+                'local_directories_set': str(self.backup_local_dir_set),
                 "message": str(self.backup_messages),
                 "error": str(self.backup_errors)
             }
