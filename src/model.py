@@ -13,7 +13,7 @@ import uuid
 from datetime import datetime
 
 from deepdiff import DeepDiff
-
+VERSION = '0.1'
 
 '''
 Draft model for python supporting manifest JSON object. 
@@ -48,11 +48,12 @@ class Backup():
         pass
 #restore link is where is the file is ... not computed as current restore does
 class Manifest():
-    def __init__(self,manifest_id):
-        self.manifest_id = ""
-        self.manifest_name = ""
-        self.manifest_savepoint_number = ""
-        self.manifest_type = ""
+    def __init__(self,manifest_id_in):
+        self.manifest_version = VERSION
+        self.manifest_id = manifest_id_in
+        self.manifest_name = str('MANIFEST-'+VERSION+'-'+str(self.manifest_id))
+        self.manifest_savepoint_number = 0
+        self.manifest_type = "diff"
         self.manifest_universe_name = ""
         self.manifest_universe_id = ""
         self.manifest_create_date = str(now.strftime("%d/%m/%Y %H:%M:%S"))
@@ -72,15 +73,19 @@ class Manifest():
         self.storage_files_dict = dict()
         self.backup_name = ""
         self.backup_id = ""
+        self.backup_snapshot_id = set()
+        self.backup_leaders = list()
         self.backup_create_date = ""
         self.backup_start_time = ""
         self.backup_end_time = ""
+        self.backup_local_dirs = dict()
         self .backup_messages = dict()
         self.backup_errors = dict()
 
     def to_json_dict(self):
         manifest_json = { "manifest": {
             "metadata": {
+            "manifest_version": self.manifest_version,
             "manifest_id": self.manifest_id,
             "manifest_name": self.manifest_name,
             "manifest_savepoint_number": self.manifest_savepoint_number,
@@ -104,11 +109,14 @@ class Manifest():
             }
             , "backup": {
                 "name": self.backup_name,
+                "backup_snapshot_id": str(self.backup_snapshot_id),
+                "backup_tablet_leaders": str(self.backup_leaders),
                 "create_date": self.backup_create_date,
                 "start_time": self.backup_start_time,
                 "end_time": self.backup_end_time,
-                "message": self.backup_messages,
-                "error": self.backup_errors
+                "local_directories": str(self.backup_local_dirs),
+                "message": str(self.backup_messages),
+                "error": str(self.backup_errors)
             }
         }}
         return manifest_json

@@ -745,7 +745,7 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys', 'delete'],
+            'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'],
             help='Create, restore or delete the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
@@ -2332,5 +2332,4 @@ class YBBackup:
             self.timer.print_summary()
 
 
-if __name__ == "__main__":
-    YBBackup().run()
+

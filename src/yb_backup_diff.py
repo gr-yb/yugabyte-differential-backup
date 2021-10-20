@@ -33,7 +33,8 @@ import os
 import re
 
 # ourstuff
-import model
+from model import Manifest
+#import model
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -593,6 +594,10 @@ class YBBackup:
         self.timer = BackupTimer()
         self.parse_arguments()
 
+        self.manifest_class = Manifest(uuid.uuid1())
+
+        #self.manifest_class = Manifest(uuid.uuid1())
+
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
             logging.info("Sleep {}... ({} retries left)".format(timeout, num_retry))
@@ -752,7 +757,7 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'], #ourstuff
+            'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'],
             help='Create, restore or delete the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
@@ -1255,7 +1260,7 @@ class YBBackup:
                 num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
-
+#ourstuff get data direstories goes in anexecutes find accross all tserver mount points put it al
     def find_data_dirs(self, tserver_ip):
         """
         Finds the data directories on the given tserver. This just reads a config file on the target
@@ -1286,8 +1291,10 @@ class YBBackup:
                  "'{}'. Was looking for '{}', got this: [[ {} ]]").format(
                     TSERVER_CONF_PATH, tserver_ip, FS_DATA_DIRS_ARG_PREFIX, grep_output))
         return data_dirs
-
+#ourstuff start here of loading manifest , need to iterate over dir's to get files.
     def find_local_data_dirs(self, tserver_ip):
+        print('checking for diff in currentcode find-local-data-drs')
+
         ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
         for line in ps_output.split('\n'):
             args = line.split(' ')
@@ -1309,6 +1316,16 @@ class YBBackup:
                             fs_data_dirs.append(data_dir)
                     elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
                         ip = args[i + 1]
+
+                #currentcode
+                print('checking for diff in currentcode')
+                if self.manifest_class.manifest_type == 'diff_backup':
+                    self.manifest_class.backup_local_dirs.update(fs_data_dirs)
+                    print('fs_data_dirs',fs_data_dirs)
+                    logging.info("Running Diff Found data directories on server {}: {}".format(ip, fs_data_dirs))
+                    logging.info("Current Manifest %s".format(self.manifest_class.json_out()))
+                    print('currentcode')
+                    print(self.manifest_class.json_out())
 
                 if ip == tserver_ip:
                     logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
@@ -1397,7 +1414,7 @@ class YBBackup:
                              "for tablet ids: '{}'".format(tserver_ip, deleted_tablets))
 
         return (tserver_ip_to_tablet_id_to_snapshot_dirs, deleted_tablets_by_tserver_ip)
-
+#ourstuff start here for files
     def find_snapshot_directories(self, data_dir, snapshot_id, tserver_ip):
         """
         Find snapshot directories under the given data directory for the given snapshot id on the
@@ -1417,7 +1434,24 @@ class YBBackup:
              '-name', snapshot_id, '-and',
              '-wholename', SNAPSHOT_DIR_GLOB],
             tserver_ip)
+        #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
+        print('output',output)
+        print('manifest json',self.manifest_class.json_out())
         return [line.strip() for line in output.split("\n") if line.strip()]
+
+    def upload_snapshot_directories_diff(self, tablet_leaders, snapshot_id, snapshot_filepath):
+        """
+         Uploads snapshot directories from all tablet servers hosting our table to subdirectories
+         of the given target backup directory.
+         :param tablet_leaders: a list of (tablet_id, tserver_ip) pairs
+         :param snapshot_id: self-explanatory
+         :param snapshot_filepath: the top-level directory under which to upload the data directories
+         """
+        pool = ThreadPool(self.args.parallelism)
+
+        tablets_by_leader_ip = {}
+        for (tablet_id, leader_ip) in tablet_leaders:
+            tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
     def upload_snapshot_directories(self, tablet_leaders, snapshot_id, snapshot_filepath):
         """
@@ -1435,13 +1469,16 @@ class YBBackup:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
+        print('tserver_ips',tserver_ips)
         #ourstuff
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 #ourstuff
+        #currentcode
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+        print('parallel_find_snapshots',parallel_find_snapshots)
         # add depth for files?
 
         tservers_processed = []
@@ -1461,6 +1498,9 @@ class YBBackup:
 #here is where we find the snapshots
         #set of results
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
+        print('find_snapshot_dir_results',find_snapshot_dir_results)
+        self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
+        print('local_dirs manifest',self.manifest_class.json_out())
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
@@ -1477,6 +1517,7 @@ class YBBackup:
         parallel_uploads.run(pool)
 #write out diff manifest to the namespace or location provided in args.. cloud provider, type and namespace
 
+#returns a dict
     def rearrange_snapshot_dirs(
             self, find_snapshot_dir_results, snapshot_id, tablets_by_tserver_ip):
         """
@@ -1521,7 +1562,9 @@ class YBBackup:
                             snapshot_dir, tserver_ip,
                             ", ".join(sorted(tablets_by_tserver_ip[tserver_ip]))))
                     continue
-
+#returns a dict do a send pass over this dict and find all files
+                #convert tablet_id_to_snapshot_dirs to iterate over and get the files
+                #get list of files for the manifest
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
@@ -1668,7 +1711,7 @@ class YBBackup:
                     if len(tablet_id_to_snapshot_dirs) > 0:
                         tablet_id = list(tablet_id_to_snapshot_dirs)[0]
                         snapshot_dirs = tablet_id_to_snapshot_dirs[tablet_id]
-
+#ourstuff look here for loading manifest
                         if len(snapshot_dirs) > 1:
                             raise BackupException(
                                 ('Found multiple snapshot directories on tserver {} for snapshot '
@@ -1894,8 +1937,7 @@ class YBBackup:
         logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
         self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
         #ourstuff use this to save the manifest
-        self.upload_metadata_and_checksum(metadata_path,
-                                          os.path.join(snapshot_filepath, METADATA_FILE_NAME))
+        self.upload_metadata_and_checksum(metadata_path,os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
         if is_ysql:
             self.upload_metadata_and_checksum(sql_dump_path,
@@ -1946,13 +1988,24 @@ class YBBackup:
 
             snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
 
+
         self.timer.log_new_phase("Create and upload snapshot metadata")
         #ourstuff this is where we intercept for saving diff manifest using current code
         snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
+        print(snapshot_id,'snapshotid ourstuff')
+        self.manifest_class.manifest_id = snapshot_id
         self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
+        print(tablet_leaders,'table_leaders ourstuff')
         #ourstuff buld of work here
         #func to get
+        # ourstuff check for diff backup
+        if self.args.command == 'create_diff':
+            self.manifest_class.backup_snapshot_id.add(snapshot_id)
+            self.manifest_class.backup_leaders = tablet_leaders.copy()
+            curr_manifest = self.manifest_class.to_json_dict()
+            logging.info('%s running diff in backup_table',curr_manifest)
+
         self.timer.log_new_phase("Upload snapshot directories")
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
@@ -2355,6 +2408,22 @@ class YBBackup:
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
+    def backup_diff(self):
+        logging.info("Start backup diff ...")
+
+        logging.info("Start init of manifest calling backup table ...")
+        #initilize a new manifest
+        manifest_id = uuid.uuid1()
+        #manifest_class = model.Manifest(manifest_id)
+        #self.manifest_class.manifest_name = str('manifest'+self.manifest_class.manifest_id)
+        self.manifest_class.manifest_type = 'diff_backup'
+        self.manifest_class.manifest_status = 'init'
+        self.manifest_class.backup_create_date = str(date.today())
+        #print(self.manifest_class.json_out())
+        logging.info("Finished init of manifest calling backup table ...",self.manifest_class.to_json_dict())
+
+        self.backup_table()
+
     def run(self):
         #roustuff command under create diff create_diff
         try:
@@ -2369,15 +2438,7 @@ class YBBackup:
                 self.delete_backup()
             elif self.args.command == 'create_diff': #ourstuff
                 #follow the same code flow as current code backuo_table
-                #self.backup_table()
-                logging.INFO(level=logging.INFO, format="%(asctime)s %(levelname)s: %('running create_diff')s")
-                manifest_class.manifest_name = manifest_class.manifest_id
-                manifest_class.manifest_type = 'diff_backup'
-                manifest_class.manifest_status = 'init'
-                manifest_class.backup_create_date = date.today()
-                self.backup_table()
-
-                #print("running diff")
+                self.backup_diff()
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))
@@ -2389,12 +2450,12 @@ class YBBackup:
             traceback.print_stack()
         finally:
             self.timer.print_summary()
-            print(manifest_class.json_out()) #ourstuff
+            #print(self.manifest_class.json_out()) #ourstuff
 
 
 if __name__ == "__main__":
-    manifest_id = uuid.uuid1()
-    manifest_class = model.Manifest(manifest_id)
+    print('starting diff code')
+    #manifest_id = uuid.uuid1()
+    #3manifest_class = model.Manifest(manifest_id)
     YBBackup().run()
-    #print('test run diff')
-    #print(test_class.json_out())
+    print('success')
