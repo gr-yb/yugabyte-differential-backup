@@ -64,6 +64,8 @@ class Manifest():
         self.database_objects = dict()
         self.storage_backup_location = ""
         self.storage_backup_location_type = ""
+        self.storage_keyspace = ""
+        self.storage_table = ""
         self.storage_table_ids = dict()
         self.storage_tablet_ids = dict()
         self.storage_files = dict()
@@ -102,6 +104,8 @@ class Manifest():
             "storage": {
                 "backup_location": self.storage_backup_location,
                 "backup_location_type": self.storage_backup_location_type,
+                "storage_keyspace": self.storage_keyspace,
+                "storage_table": self.storage_table,
                 "table_id": str(self.storage_table_ids),
                 "tablet_id": str(self.storage_tablet_ids),
                 "files": str(self.storage_files)

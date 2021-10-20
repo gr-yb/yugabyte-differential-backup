@@ -1139,7 +1139,7 @@ class YBBackup:
                     tablet_leader_host_port = fields[2]
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
                     tablet_leaders.append((tablet_id, ts_host))
-
+        self.manifest_class.storage_tablet_ids.update(tablet_leaders)
         return tablet_leaders
 
     def create_remote_tmp_dir(self, server_ip):
@@ -2004,8 +2004,11 @@ class YBBackup:
         if self.args.command == 'create_diff':
             self.manifest_class.backup_snapshot_id.add(snapshot_id)
             self.manifest_class.backup_leaders = tablet_leaders.copy()
-            curr_manifest = self.manifest_class.to_json_dict()
-            logging.info('%s running diff in backup_table',curr_manifest)
+            self.manifest_class.storage_backup_location = self.args.backup_location
+            self.manifest_class.storage_backup_location_type = self.args.storage_type
+            self.manifest_class.storage_keyspace = self.args.keyspace
+            self.manifest_class.storage_table = self.args.table
+            #logging.info('%s running diff in backup_table',curr_manifest)
 
         self.timer.log_new_phase("Upload snapshot directories")
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
@@ -2420,7 +2423,6 @@ class YBBackup:
         self.manifest_class.manifest_type = 'diff_backup'
         self.manifest_class.manifest_status = 'init'
         self.manifest_class.backup_create_date = str(date.today())
-        #print(self.manifest_class.json_out())
         logging.info("Finished init of manifest calling backup table ...",self.manifest_class.to_json_dict())
 
         self.backup_table()
