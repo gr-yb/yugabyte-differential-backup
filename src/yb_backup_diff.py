@@ -609,16 +609,19 @@ class YBBackup:
         '''
         server_ip = '10.0.0.241'
         absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
-        files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b/*.sst", server_ip).strip().split()
+        files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/e6e13ee9-0551-4ce1-881a-1343e0990300/*.sst", server_ip).strip().split()
+        #find "`pwd`" -iname '*.sst'
+        files = self.run_ssh_cmd('''find "`pwd`" -iname '*.sst''', server_ip).strip().split()
 
         print('files-list',files,'type of files ',type(files))
         #iterate over the list and add all values as key value pair in manifest.dict.
         #currentcode
         for file_name in files:
             local_fils_dict = {file_name: server_ip}
+            self.manifest_class.backup_local_dir_files.update(local_fils_dict)
 
         #local_fils_dict = {files[0]: server_ip}
-        self.manifest_class.backup_local_dir_files.update(local_fils_dict)
+        #self.manifest_class.backup_local_dir_files.update(local_fils_dict)
         #print(self.manifest_class.json_out())
 
     def sleep_or_raise(self, num_retry, timeout, ex):
@@ -1490,11 +1493,13 @@ class YBBackup:
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
+        print('tablets_by_leader_ip',type(tablets_by_leader_ip),tablets_by_leader_ip)
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
-        print('tserver_ips',tserver_ips)
+        print('tserver_ips',type(tserver_ips),tserver_ips)
         #ourstuff
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        print('data_dir_by_tserver',type(data_dir_by_tserver),data_dir_by_tserver)
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
@@ -1521,7 +1526,9 @@ class YBBackup:
 #here is where we find the snapshots
         #set of results
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
-        print('find_snapshot_dir_results',find_snapshot_dir_results)
+        print('find_snapshot_dir_results','type',type(find_snapshot_dir_results),find_snapshot_dir_results)
+
+
         self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
         self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
         #print('local_dirs manifest',self.manifest_class.json_out())
@@ -1533,6 +1540,7 @@ class YBBackup:
 #transaltes to ssh commands.. out here no code here for metadata somewhere above this line in this func
 
         parallel_uploads = SequencedParallelCmd(self.run_ssh_cmd)
+        print('parallel_uploads',type(parallel_uploads))
 
         self.prepare_cloud_ssh_cmds(
              parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
@@ -1591,6 +1599,8 @@ class YBBackup:
                 #convert tablet_id_to_snapshot_dirs to iterate over and get the files
                 #get list of files for the manifest
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
+
+        print('tserver_ip_to_tablet_id_to_snapshot_dirs',type(tserver_ip_to_tablet_id_to_snapshot_dirs),tserver_ip_to_tablet_id_to_snapshot_dirs)
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
