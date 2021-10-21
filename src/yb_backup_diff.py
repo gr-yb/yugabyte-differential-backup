@@ -599,15 +599,25 @@ class YBBackup:
         #self.manifest_class = Manifest(uuid.uuid1())
 
     def get_files(self):
+        '''
+            #add vars for input to get_files
+            absolute_snapshot_path the snapshot path on the server as abolute
+            server_ip the ip address of the tserver
+        #need to fic ssh_cmd to accept var for path in
+        #need loop to add all the files
+        :return: retuern a dict of the all the key value pairs of absolute path/file to ip address of server
+        '''
         server_ip = '10.0.0.241'
         absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
         files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b/*.sst", server_ip).strip().split()
-        print('files-list',files)
+
+        print('files-list',files,'type of files ',type(files))
+        #iterate over the list and add all values as key value pair in manifest.dict.
         #currentcode
-        #add vars for input to get_files
-        #need to fic ssh_cmd to accept var for path in
-        #need loop to add all the files
-        local_fils_dict = {files[0]: server_ip}
+        for file_name in files:
+            local_fils_dict = {file_name: server_ip}
+
+        #local_fils_dict = {files[0]: server_ip}
         self.manifest_class.backup_local_dir_files.update(local_fils_dict)
         #print(self.manifest_class.json_out())
 
