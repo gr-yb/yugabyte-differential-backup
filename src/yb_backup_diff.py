@@ -603,9 +603,13 @@ class YBBackup:
         absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
         files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b/*.sst", server_ip).strip().split()
         print('files-list',files)
+        #currentcode
+        #add vars for input to get_files
+        #need to fic ssh_cmd to accept var for path in
+        #need loop to add all the files
         local_fils_dict = {files[0]: server_ip}
         self.manifest_class.backup_local_dir_files.update(local_fils_dict)
-        print(self.manifest_class.json_out())
+        #print(self.manifest_class.json_out())
 
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
@@ -1302,7 +1306,7 @@ class YBBackup:
         return data_dirs
 #ourstuff start here of loading manifest , need to iterate over dir's to get files.
     def find_local_data_dirs(self, tserver_ip):
-        print('checking for diff in currentcode find-local-data-drs')
+        print('checking for diff in current code find-local-data-drs')
 
         ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
         for line in ps_output.split('\n'):
@@ -1326,15 +1330,14 @@ class YBBackup:
                     elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
                         ip = args[i + 1]
 
-                #currentcode
-                print('checking for diff in currentcode')
+                print('checking for diff in current code')
                 if self.manifest_class.manifest_type == 'diff_backup':
                     self.manifest_class.backup_local_dirs.update(fs_data_dirs)
                     print('fs_data_dirs',fs_data_dirs)
                     logging.info("Running Diff Found data directories on server {}: {}".format(ip, fs_data_dirs))
                     logging.info("Current Manifest %s".format(self.manifest_class.json_out()))
-                    print('currentcode')
-                    print(self.manifest_class.json_out())
+
+                    #print(self.manifest_class.json_out())
 
                 if ip == tserver_ip:
                     logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
@@ -1445,7 +1448,7 @@ class YBBackup:
             tserver_ip)
         #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
         print('output',output)
-        print('manifest json',self.manifest_class.json_out())
+        #print('manifest json',self.manifest_class.json_out())
         print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
 
@@ -1486,7 +1489,7 @@ class YBBackup:
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 #ourstuff
-        #currentcode
+
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
         print('parallel_find_snapshots',parallel_find_snapshots)
         # add depth for files?
@@ -1511,7 +1514,7 @@ class YBBackup:
         print('find_snapshot_dir_results',find_snapshot_dir_results)
         self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
         self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
-        print('local_dirs manifest',self.manifest_class.json_out())
+        #print('local_dirs manifest',self.manifest_class.json_out())
         self.get_files()
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
