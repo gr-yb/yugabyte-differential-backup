@@ -12,7 +12,6 @@ import string
 import uuid
 from datetime import datetime
 
-from deepdiff import DeepDiff
 VERSION = '0.1'
 
 '''
@@ -27,10 +26,6 @@ valid_database_types = ["ycql","ysql"]
 manifest_name = "MANIFEST-DIFF"
 
 now = datetime.now()
-
-def diff_dict(dict1, dict2):
-    diff = DeepDiff(dict1, dict2, ignore_order=True)
-    return diff
 
 class Database():
     def __init__(self):
