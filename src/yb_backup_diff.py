@@ -598,6 +598,15 @@ class YBBackup:
 
         #self.manifest_class = Manifest(uuid.uuid1())
 
+    def get_files(self):
+        server_ip = '10.0.0.241'
+        absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
+        files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b/*.sst", server_ip).strip().split()
+        print('files-list',files)
+        local_fils_dict = {files[0]: server_ip}
+        self.manifest_class.backup_local_dir_files.update(local_fils_dict)
+        print(self.manifest_class.json_out())
+
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
             logging.info("Sleep {}... ({} retries left)".format(timeout, num_retry))
@@ -1412,7 +1421,7 @@ class YBBackup:
             if deleted_tablets:
                 logging.info("No snapshot directories generated on tablet server '{}' "
                              "for tablet ids: '{}'".format(tserver_ip, deleted_tablets))
-
+        print('new tableid-to-snapshotdir', tserver_ip_to_tablet_id_to_snapshot_dirs)
         return (tserver_ip_to_tablet_id_to_snapshot_dirs, deleted_tablets_by_tserver_ip)
 #ourstuff start here for files
     def find_snapshot_directories(self, data_dir, snapshot_id, tserver_ip):
@@ -1437,6 +1446,7 @@ class YBBackup:
         #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
         print('output',output)
         print('manifest json',self.manifest_class.json_out())
+        print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
 
     def upload_snapshot_directories_diff(self, tablet_leaders, snapshot_id, snapshot_filepath):
@@ -1502,6 +1512,7 @@ class YBBackup:
         self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
         self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
         print('local_dirs manifest',self.manifest_class.json_out())
+        self.get_files()
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
@@ -2453,6 +2464,9 @@ class YBBackup:
             traceback.print_stack()
         finally:
             self.timer.print_summary()
+            print('final-json')
+            print(self.manifest_class.json_out())
+
             #print(self.manifest_class.json_out()) #ourstuff
 
 

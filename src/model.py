@@ -81,6 +81,7 @@ class Manifest():
         self.backup_end_time = ""
         self.backup_local_dirs = dict()
         self.backup_local_dir_set = []
+        self.backup_local_dir_files = {}
         self .backup_messages = dict()
         self.backup_errors = dict()
 
@@ -119,6 +120,7 @@ class Manifest():
                 "end_time": self.backup_end_time,
                 "local_directories": str(self.backup_local_dirs),
                 'local_directories_set': str(self.backup_local_dir_set),
+                "local_backup_local_dir_files": str(self.backup_local_dir_files),
                 "message": str(self.backup_messages),
                 "error": str(self.backup_errors)
             }
