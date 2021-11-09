@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright 2019 YugaByte, Inc. and Contributors
+# Copyright 2021 YugaByte, Inc. and Contributors
 #
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
@@ -11,6 +11,7 @@
 from __future__ import print_function
 
 import argparse
+import ast
 import atexit
 import copy
 import logging
@@ -33,9 +34,13 @@ import os
 import re
 
 # ourstuff
-from model import Manifest
-#import model
+# from model import Manifest
+import boto3
 
+# import model
+
+PREV_MANIFEST = 'PREV_MANIFEST'
+# PREV_MANIFEST = 'MANIFEST'
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
 COLOCATED_UUID_SUFFIX = '.colocated.parent.uuid'
@@ -50,6 +55,12 @@ FS_DATA_DIRS_ARG_PREFIX = FS_DATA_DIRS_ARG_NAME + '='
 RPC_BIND_ADDRESSES_ARG_NAME = '--rpc_bind_addresses'
 RPC_BIND_ADDRESSES_ARG_PREFIX = RPC_BIND_ADDRESSES_ARG_NAME + '='
 
+# For differential backup, action to take with each file
+# NOOP = no operation.
+ACTION_COPY = 1
+ACTION_MOVE = 2
+ACTION_NOOP = 3
+
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
 
@@ -63,9 +74,13 @@ YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
+DIFF_SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/'
 SNAPSHOT_DIR_DEPTH = 7
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
+
+SNAPSHOT_FILES_DIR_MIN_DEPTH = 8
+SNAPSHOT_FILES_DIR_MAX_DEPTH = 9
 
 TABLE_PATH_PREFIX_TEMPLATE = ROCKSDB_PATH_PREFIX + '/table-{}'
 
@@ -79,6 +94,7 @@ CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
 
+MANIFEST = 'MANIFEST'
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
 SHA_TOOL_PATH = '/usr/bin/sha256sum'
@@ -91,6 +107,97 @@ DEFAULT_REMOTE_YSQL_DUMP_PATH = os.path.join(YB_HOME_DIR, 'master/postgres/bin/y
 DEFAULT_REMOTE_YSQL_SHELL_PATH = os.path.join(YB_HOME_DIR, 'master/bin/ysqlsh')
 DEFAULT_YB_USER = 'yugabyte'
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
+VERSION = '0.1'
+
+class Manifest():
+    def __init__(self,manifest_id_in):
+        self.manifest_version = VERSION
+        self.manifest_id = str(manifest_id_in)
+        self.manifest_name = str('MANIFEST-'+VERSION+'-'+str(self.manifest_id))
+        self.manifest_savepoint_number = 0
+        self.manifest_type = "diff"
+        self.manifest_universe_name = ""
+        self.manifest_universe_id = ""
+        self.manifest_create_date = ''
+        self.manifest_status = ""
+        self.database_name = ""
+        self.database_type = ""
+        self.database_tables = dict()
+        self.database_objects = dict()
+        self.storage_backup_location = ""
+        self.storage_backup_location_type = ""
+        self.storage_keyspace = ""
+        self.storage_table = ""
+        self.storage_table_ids = dict()
+
+        self.storage_tablet_ids = dict()
+
+        self.storage_files = dict()
+        self.storage_table_ids_dict = dict()
+        self.storage_tablet_ids_dict = dict()
+        self.storage_files_dict = dict()
+        self.backup_name = ""
+        self.backup_id = ""
+        self.backup_snapshot_id = set()
+        self.backup_leaders = list()
+        self.backup_create_date = ""
+        self.backup_start_time = ""
+        self.backup_end_time = ""
+        self.backup_local_dirs = dict()
+        self.backup_local_dir_set = []
+        self.backup_local_dir_files = dict()
+        self.backup_messages = dict()
+        self.backup_errors = dict()
+
+    def to_json_dict(self):
+        manifest_json = {"manifest": {
+            "metadata": {
+            "manifest_version": self.manifest_version,
+            "manifest_id": self.manifest_id,
+            "manifest_name": self.manifest_name,
+            "manifest_savepoint_number": self.manifest_savepoint_number,
+            "manifest_type": self.manifest_type,
+            "manifest_universe_name": self.manifest_universe_name,
+            "manifest_universe_id": self.manifest_universe_id,
+            "manifest_create_date": self.manifest_create_date,
+            "manifest_status": self.manifest_status,
+            },
+            "database": {
+            "name": self.database_name, "type": self.database_type, "database_tables": str(self.database_tables),"database_objects": str(self.database_objects)
+        },
+            "storage": {
+                "backup_location": self.storage_backup_location,
+                "backup_location_type": self.storage_backup_location_type,
+                "storage_keyspace": self.storage_keyspace,
+                "storage_table": self.storage_table,
+                "table_id": str(self.storage_table_ids),
+                "tablet_id": str(self.storage_tablet_ids),
+                "files": str(self.storage_files)
+            }
+            , "backup": {
+                "name": self.backup_name,
+                "backup_snapshot_id": str(self.backup_snapshot_id),
+                "backup_tablet_leaders": str(self.backup_leaders),
+                "create_date": self.backup_create_date,
+                "start_time": self.backup_start_time,
+                "end_time": self.backup_end_time,
+                "local_directories": str(self.backup_local_dirs),
+                'local_directories_set': str(self.backup_local_dir_set),
+                "local_backup_local_dir_files": str(self.backup_local_dir_files),
+                "message": str(self.backup_messages),
+                "error": str(self.backup_errors)
+            }
+        }}
+        return manifest_json
+
+    def json_out(self):
+        json_dict = self.to_json_dict()
+        json_object = json.dumps(json_dict, indent=4)
+        return json_object
+
+class App(dict):
+    def __str__(self):
+        return json.dumps(self)
 
 
 class BackupException(Exception):
@@ -136,9 +243,9 @@ class BackupTimer:
         if self.num_phases > 0:  # Don't print for phase 0 as that is just the start-up.
             time_taken = self.logged_times[self.num_phases] - self.logged_times[self.num_phases - 1]
             logging.info("Completed phase {}: {} [Time taken for phase: {}]".format(
-                    self.num_phases,
-                    self.phases[self.num_phases],
-                    str(timedelta(seconds=time_taken))))
+                self.num_phases,
+                self.phases[self.num_phases],
+                str(timedelta(seconds=time_taken))))
         self.num_phases += 1
         logging.info("Starting phase {}: {}".format(self.num_phases, msg))
 
@@ -150,7 +257,7 @@ class BackupTimer:
             log_str += "{} : PHASE {} : {}\n".format(str(timedelta(seconds=t)), i, self.phases[i])
         # Also print info for total runtime.
         log_str += "Total runtime: {}".format(
-                str(timedelta(seconds=time.time() - self.logged_times[0])))
+            str(timedelta(seconds=time.time() - self.logged_times[0])))
         # Add [app] for YW platform filter.
         logging.info("[app] " + log_str)
 
@@ -374,6 +481,21 @@ def verify_colocated_table_ids(old_id, new_id):
 def keyspace_name(keyspace):
     return keyspace.split('.')[1] if ('.' in keyspace) else keyspace
 
+def nested_dict_pairs_iterator(dict_obj):
+    ''' This function accepts a nested dictionary as argument
+        and iterate over all values of nested dictionaries
+    '''
+    # Iterate over all key-value pairs of dict argument
+    for key, value in dict_obj.items():
+        # Check if value is of dict type
+        if isinstance(value, dict):
+            # If value is dict then iterate over all its values
+            for pair in nested_dict_pairs_iterator(value):
+                yield (key, *pair)
+        else:
+            # If value is not dict type then yield the value
+            yield (key, value)
+    print(pair)
 
 class BackupOptions:
     def __init__(self, args):
@@ -434,6 +556,13 @@ class AzBackupStorage(AbstractBackupStorage):
         dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
         return ["{} {} {} {}".format(self._command_list_prefix(), "rm", dest, "--recursive=true")]
 
+    def move_obj_cmd(self, src, dest):
+        src = "'{}'".format(src + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        dest = "'{}'".format(dest + os.getenv('AZURE_STORAGE_SAS_TOKEN'))
+        return ["{} {} {} {} {} && {} {} {} {}".format(self._command_list_prefix(),
+                                                       "cp", src, dest, "--recursive",
+                                                       self._command_list_prefix(), "rm", src,
+                                                       "--recursive=true")]
 
 class GcsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -464,6 +593,8 @@ class GcsBackupStorage(AbstractBackupStorage):
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["rm", "-r", dest]
 
+    def move_obj_cmd(self, src, dest):
+        return self._command_list_prefix() + ["mv", src, dest]
 
 class S3BackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -502,6 +633,9 @@ class S3BackupStorage(AbstractBackupStorage):
             raise BackupException("Destination needs to be well formed.")
         return self._command_list_prefix() + ["del", "-r", dest]
 
+    def move_obj_cmd(self, src, dest):
+        cmd_list = ["mv", src, dest]
+        return self._command_list_prefix() + cmd_list
 
 class NfsBackupStorage(AbstractBackupStorage):
     def __init__(self, options):
@@ -541,6 +675,10 @@ class NfsBackupStorage(AbstractBackupStorage):
             raise BackupException("Destination needs to be well formed.")
         return ["rm", "-rf", pipes.quote(dest)]
 
+    def move_obj_cmd(self, src, dest):
+        return ["mkdir -p {} && mv {} {}".format(pipes.quote(dest),
+                                                 pipes.quote(src),
+                                                 pipes.quote(dest))]
 
 BACKUP_STORAGE_ABSTRACTIONS = {
     S3BackupStorage.storage_type(): S3BackupStorage,
@@ -583,7 +721,6 @@ def get_instance_profile_credentials():
 
     return result
 
-
 class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
@@ -594,12 +731,16 @@ class YBBackup:
         self.timer = BackupTimer()
         self.parse_arguments()
 
+        self.prev_manifest_class = Manifest(uuid.uuid1())
         self.manifest_class = Manifest(uuid.uuid1())
+        self.manifest_class_last_savepoint = ''
 
         #self.manifest_class = Manifest(uuid.uuid1())
 
-    def get_files(self):
+    def get_files(self, tablet_leaders, snapshot_id, snapshot_filepath):
+
         '''
+           hack to just load 1 file and 1 dir from the tserver
             #add vars for input to get_files
             absolute_snapshot_path the snapshot path on the server as abolute
             server_ip the ip address of the tserver
@@ -607,11 +748,24 @@ class YBBackup:
         #need loop to add all the files
         :return: retuern a dict of the all the key value pairs of absolute path/file to ip address of server
         '''
+        return 0
         server_ip = '10.0.0.241'
         absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
-        files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/e6e13ee9-0551-4ce1-881a-1343e0990300/*.sst", server_ip).strip().split()
+        #files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/e6e13ee9-0551-4ce1-881a-1343e0990300/*.sst", server_ip).strip().split()
         #find "`pwd`" -iname '*.sst'
-        files = self.run_ssh_cmd('''find "`pwd`" -iname '*.sst''', server_ip).strip().split()
+        files = self.run_ssh_cmd('find /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76 -name *.sst', server_ip).strip().split()
+        data_dir = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76'
+        table_id = 'b2e81a8531584f77863a404551693f76'
+        tserver_ip = '10.0.0.241'
+        output = self.run_ssh_cmd(
+            ['find', data_dir,
+             '-mindepth', TABLET_DIR_DEPTH,
+             '-maxdepth', TABLET_DIR_DEPTH,
+             '-name', TABLET_MASK,
+             '-and',
+             '-wholename', TABLET_DIR_GLOB.format(table_id)],
+            tserver_ip)
+        print('output',type(output),output)
 
         print('files-list',files,'type of files ',type(files))
         #iterate over the list and add all values as key value pair in manifest.dict.
@@ -623,6 +777,7 @@ class YBBackup:
         #local_fils_dict = {files[0]: server_ip}
         #self.manifest_class.backup_local_dir_files.update(local_fils_dict)
         #print(self.manifest_class.json_out())
+        return output
 
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
@@ -774,6 +929,9 @@ class YBBackup:
         parser.add_argument(
             '--verbose', required=False, action='store_true', help='Verbose mode')
         parser.add_argument(
+            '--restore_points', type=check_arg_range(1, 100), default=1,
+            help='Number or restore points for differential backups.')
+        parser.add_argument(
             '-j', '--parallelism', type=check_arg_range(1, 100), default=8,
             help='Maximum number of parallel commands to launch. '
                  'This also affects the amount of outgoing s3cmd sync traffic when copying a '
@@ -804,6 +962,15 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+        parser.add_argument(
+            '--prev_manifest_source',required=False,
+            help='The location of last differential backup savepoint, include manifest name. allowed :s3 bucket url')
+        parser.add_argument(
+            '--prev_manifest_source_type',required=False,
+            help='The type of location of last differential backup savepoint. Allowed: s3 ')
+        parser.add_argument(
+            '--savepoint_number',required=False,
+            help='The type of location of last differential backup savepoint. Allowed: s3 ')
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
 
@@ -917,6 +1084,9 @@ class YBBackup:
 
     def is_ysql_keyspace(self):
         return self.args.keyspace and keyspace_type(self.args.keyspace[0]) == 'ysql'
+
+    def is_differential_backup(self):
+        return self.args.command == 'create_diff'
 
     def needs_change_user(self):
         return self.args.ssh_user != self.args.remote_user
@@ -1165,7 +1335,6 @@ class YBBackup:
                     tablet_leader_host_port = fields[2]
                     (ts_host, ts_port) = tablet_leader_host_port.split(":")
                     tablet_leaders.append((tablet_id, ts_host))
-        self.manifest_class.storage_tablet_ids.update(tablet_leaders)
         return tablet_leaders
 
     def create_remote_tmp_dir(self, server_ip):
@@ -1176,6 +1345,7 @@ class YBBackup:
 
         return self.run_ssh_cmd(['mkdir', '-p', self.get_tmp_dir()],
                                 server_ip, upload_cloud_cfg=False)
+
 
     def upload_cloud_config(self, server_ip):
         if server_ip not in self.server_ips_with_uploaded_cloud_cfg:
@@ -1286,7 +1456,7 @@ class YBBackup:
                 num_retry=num_retries)
         else:
             return self.run_program(['bash', '-c', cmd])
-#ourstuff get data direstories goes in anexecutes find accross all tserver mount points put it al
+
     def find_data_dirs(self, tserver_ip):
         """
         Finds the data directories on the given tserver. This just reads a config file on the target
@@ -1317,7 +1487,7 @@ class YBBackup:
                  "'{}'. Was looking for '{}', got this: [[ {} ]]").format(
                     TSERVER_CONF_PATH, tserver_ip, FS_DATA_DIRS_ARG_PREFIX, grep_output))
         return data_dirs
-#ourstuff start here of loading manifest , need to iterate over dir's to get files.
+
     def find_local_data_dirs(self, tserver_ip):
         print('checking for diff in current code find-local-data-drs')
 
@@ -1342,15 +1512,6 @@ class YBBackup:
                             fs_data_dirs.append(data_dir)
                     elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
                         ip = args[i + 1]
-
-                print('checking for diff in current code')
-                if self.manifest_class.manifest_type == 'diff_backup':
-                    self.manifest_class.backup_local_dirs.update(fs_data_dirs)
-                    print('fs_data_dirs',fs_data_dirs)
-                    logging.info("Running Diff Found data directories on server {}: {}".format(ip, fs_data_dirs))
-                    logging.info("Current Manifest %s".format(self.manifest_class.json_out()))
-
-                    #print(self.manifest_class.json_out())
 
                 if ip == tserver_ip:
                     logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
@@ -1439,7 +1600,85 @@ class YBBackup:
                              "for tablet ids: '{}'".format(tserver_ip, deleted_tablets))
         print('new tableid-to-snapshotdir', tserver_ip_to_tablet_id_to_snapshot_dirs)
         return (tserver_ip_to_tablet_id_to_snapshot_dirs, deleted_tablets_by_tserver_ip)
-#ourstuff start here for files
+
+    def find_snapshot_files(self, data_dir, snapshot_id, tserver_ip):
+        """
+        Find snapshot directories under the given data directory for the given snapshot id on the
+        given tserver.
+        :param data_dir: top-level data directory
+        :param snapshot_id: snapshot UUID
+        :param tserver_ip: tablet server IP or host name
+        :return: a list of absolute paths of remote snapshot directories for the given snapshot
+        """
+        #ourstuff where have func like this find_snapshot_files() running the find command with extra attributes with list
+        #files plus directories need find command like one below..
+        #look in manifest of last save point and then compare to current
+        output = self.run_ssh_cmd(
+            ['find', data_dir,
+             '-mindepth', SNAPSHOT_FILES_DIR_MIN_DEPTH,
+             '-maxdepth', SNAPSHOT_FILES_DIR_MAX_DEPTH,
+             '-name', "*", '-and',
+             '-wholename', DIFF_SNAPSHOT_DIR_GLOB + snapshot_id + "*"],
+            tserver_ip)
+        #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
+        print('output',output)
+        #print('manifest json',self.manifest_class.json_out())
+        # print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
+        return [line.strip() for line in output.split("\n") if line.strip()]
+
+    def get_filelist(self, tablet_leaders, snapshot_id, snapshot_filepath):
+        """
+         Uploads snapshot directories from all tablet servers hosting our table to subdirectories
+         of the given target backup directory.
+         :param tablet_leaders: a list of (tablet_id, tserver_ip) pairs
+         :param snapshot_id: self-explanatory
+         :param snapshot_filepath: the top-level directory under which to upload the data directories
+         """
+        pool = ThreadPool(self.args.parallelism)
+
+        tablets_by_leader_ip = {}
+        for (tablet_id, leader_ip) in tablet_leaders:
+            tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
+
+        print('tablets_by_leader_ip', type(tablets_by_leader_ip), tablets_by_leader_ip)
+
+        tserver_ips = sorted(tablets_by_leader_ip.keys())
+        print('tserver_ips', type(tserver_ips), tserver_ips)
+        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        print('data_dir_by_tserver', type(data_dir_by_tserver), data_dir_by_tserver)
+
+        for tserver_ip in tserver_ips:
+            data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
+
+        parallel_find_files = MultiArgParallelCmd(self.find_snapshot_files)
+        print('parallel_find_files', parallel_find_files)
+
+        tservers_processed = []
+        while len(tserver_ips) > len(tservers_processed):
+            for tserver_ip in list(tserver_ips):
+                if tserver_ip not in tservers_processed:
+                    data_dirs = data_dir_by_tserver[tserver_ip]
+                    if len(data_dirs) > 0:
+                        data_dir = data_dirs[0]
+                        parallel_find_files.add_args(data_dir, snapshot_id, tserver_ip)
+                        data_dirs.remove(data_dir)
+
+                        if len(data_dirs) == 0:
+                            tservers_processed += [tserver_ip]
+                    else:
+                        tservers_processed += [tserver_ip]
+
+        find_snapshot_file_results = parallel_find_files.run(pool)
+        print('find_snapshot_file_results', 'type', type(find_snapshot_file_results), find_snapshot_file_results)
+
+        # self.manifest_class.backup_local_dirs.update(find_snapshot_file_results)
+        # self.manifest_class.backup_local_dir_set.append(find_snapshot_file_results)
+        # print('local_dirs manifest',self.manifest_class.json_out())
+        # self.get_files(tablet_leaders,snapshot_id, snapshot_filepath)
+
+        return find_snapshot_file_results
+
+
     def find_snapshot_directories(self, data_dir, snapshot_id, tserver_ip):
         """
         Find snapshot directories under the given data directory for the given snapshot id on the
@@ -1465,19 +1704,6 @@ class YBBackup:
         print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
 
-    def upload_snapshot_directories_diff(self, tablet_leaders, snapshot_id, snapshot_filepath):
-        """
-         Uploads snapshot directories from all tablet servers hosting our table to subdirectories
-         of the given target backup directory.
-         :param tablet_leaders: a list of (tablet_id, tserver_ip) pairs
-         :param snapshot_id: self-explanatory
-         :param snapshot_filepath: the top-level directory under which to upload the data directories
-         """
-        pool = ThreadPool(self.args.parallelism)
-
-        tablets_by_leader_ip = {}
-        for (tablet_id, leader_ip) in tablet_leaders:
-            tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
     def upload_snapshot_directories(self, tablet_leaders, snapshot_id, snapshot_filepath):
         """
@@ -1505,6 +1731,7 @@ class YBBackup:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 #ourstuff
 
+
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
         print('parallel_find_snapshots',parallel_find_snapshots)
         # add depth for files?
@@ -1529,10 +1756,11 @@ class YBBackup:
         print('find_snapshot_dir_results','type',type(find_snapshot_dir_results),find_snapshot_dir_results)
 
 
-        self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
-        self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
-        #print('local_dirs manifest',self.manifest_class.json_out())
-        self.get_files()
+        # if self.is_differential_backup():
+        #     self.manifest_class.backup_local_dirs.update(find_snapshot_dir_results)
+        #     self.manifest_class.backup_local_dir_set.append(find_snapshot_dir_results)
+            #print('local_dirs manifest',self.manifest_class.json_out())
+            # self.get_files(tablet_leaders,snapshot_id, snapshot_filepath)
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
@@ -1572,6 +1800,8 @@ class YBBackup:
                 tserver_ip_to_tablet_id_to_snapshot_dirs.setdefault(tserver_ip, {})
 
             for snapshot_dir in snapshot_dirs:
+                # if self.is_differential_backup():
+                    # snapshot_dir = snapshot_dir.rsplit("/",1)[0]
                 suffix_match = SNAPSHOT_DIR_SUFFIX_RE.match(snapshot_dir)
                 if not suffix_match:
                     raise BackupException(
@@ -1648,7 +1878,6 @@ class YBBackup:
         target_filepath = target_tablet_filepath + '/'
         logging.info('Uploading %s from tablet server %s to %s URL %s' % (
                      snapshot_dir, tserver_ip, self.args.storage_type, target_filepath))
-        upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
 
         # Commands to be run on TSes over ssh for uploading the tablet backup.
         if not self.args.disable_checksums:
@@ -1656,8 +1885,40 @@ class YBBackup:
             parallel_commands.add_args(create_checksum_cmd, tserver_ip)
             # 2. Upload check-sum file.
             parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
-        # 3. Upload tablet folder.
-        parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
+
+        # if has_manifest():
+        # if self.is_differential_backup:
+        if not 'DIRECTORY' in self.manifest_class.storage_tablet_ids[tablet_id].keys():
+        # **********************************
+        # ITERATE HERE FOR differential backup
+        # instead of snapshot_dir use file
+        # Append filename to target_tablet_filepath
+        # Determine action before getting here
+        # S3 URI will be in manifest
+        # Actions: move or copy or ignore
+        # 1 - noop 2 - move 3 - copy.
+        # **********************************
+           for file in self.manifest_class.storage_tablet_ids[tablet_id]:
+              target_filename = os.path.join(target_filepath, file)
+              if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_NOOP:
+                 pass
+              else:
+                 if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_COPY:
+                    upload_file_cmd = self.storage.upload_file_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'], target_filepath)
+                    parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
+                 else:
+                     if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_MOVE:
+                         upload_file_cmd = self.storage.move_obj_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'], target_filepath)
+                 parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
+                 self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'] = copy.deepcopy(target_filename)
+        else:
+            # 3. Upload tablet folder.
+            upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
+            parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
+            for file in self.manifest_class.storage_tablet_ids[tablet_id]:
+                target_filename = os.path.join(target_filepath, file)
+                self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location']= copy.deepcopy(target_filename)
+            del self.manifest_class.storage_tablet_ids[tablet_id]['DIRECTORY']
 
     def prepare_download_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                  tserver_ip, snapshot_dir, snapshot_metadata):
@@ -1826,7 +2087,10 @@ class YBBackup:
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
                  % (self.args.nfs_storage_path, tserver_ip)))
 
-    def upload_metadata_and_checksum(self, src_path, dest_path):
+    def upload_file(self,src_path, dest_path):
+        self.upload_metadata_and_checksum(src_path, dest_path)
+
+    def upload_metadata_and_checksum(self, src_path, dest_path, run_local=False):
         """
         Upload metadata file and checksum file to the target backup location.
         :param src_path: local metadata file path
@@ -1835,7 +2099,7 @@ class YBBackup:
         src_checksum_path = checksum_path(src_path)
         dest_checksum_path = checksum_path(dest_path)
 
-        if self.args.local_yb_admin_binary:
+        if self.args.local_yb_admin_binary or run_local:
             if not os.path.exists(src_path):
                 raise BackupException(
                     "Could not find metadata file at '{}'".format(src_path))
@@ -1971,7 +2235,6 @@ class YBBackup:
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
         logging.info('[app] Exporting snapshot {} to {}'.format(snapshot_id, metadata_path))
         self.run_yb_admin(['export_snapshot', snapshot_id, metadata_path])
-        #ourstuff use this to save the manifest
         self.upload_metadata_and_checksum(metadata_path,os.path.join(snapshot_filepath, METADATA_FILE_NAME))
 
         if is_ysql:
@@ -1980,84 +2243,12 @@ class YBBackup:
 
         return snapshot_id
 
-    def backup_table(self):
-        """
-        Creates a backup of the given table by creating a snapshot and uploading it to the provided
-        backup location.
-        """
-        if not self.args.keyspace:
-            raise BackupException('Need to specify --keyspace')
 
-        if self.args.table:
-            if self.is_ysql_keyspace():
-                raise BackupException(
-                    "Back up for YSQL is only supported at the database level, "
-                    "and not at the table level.")
-
-            logging.info('[app] Backing up tables: {} to {}'.format(
-                         self.table_names_str(), self.args.backup_location))
-        else:
-            if len(self.args.keyspace) != 1:
-                raise BackupException(
-                    "Only one keyspace supported. Found {} --keyspace keys.".
-                    format(len(self.args.keyspace)))
-
-            logging.info('[app] Backing up keyspace: {} to {}'.format(
-                         self.args.keyspace[0], self.args.backup_location))
-
-        if self.args.no_auto_name:
-            snapshot_filepath = self.args.backup_location
-        else:
-            if self.args.table:
-                snapshot_bucket = 'table-{}'.format(self.table_names_str('.', '-'))
-            else:
-                snapshot_bucket = 'keyspace-{}'.format(self.args.keyspace[0])
-
-            if self.args.table_uuid:
-                if len(self.args.table) != len(self.args.table_uuid):
-                    raise BackupException(
-                        "Found {} --table_uuid keys and {} --table keys. Number of these keys "
-                        "must be equal.".format(len(self.args.table_uuid), len(self.args.table)))
-
-                snapshot_bucket = '{}-{}'.format(snapshot_bucket, '-'.join(self.args.table_uuid))
-
-            snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
-
-
-        self.timer.log_new_phase("Create and upload snapshot metadata")
-        #ourstuff this is where we intercept for saving diff manifest using current code
-        snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
-        print(snapshot_id,'snapshotid ourstuff')
-        self.manifest_class.manifest_id = snapshot_id
-        self.timer.log_new_phase("Find tablet leaders")
-        tablet_leaders = self.find_tablet_leaders()
-        print(tablet_leaders,'table_leaders ourstuff')
-        #ourstuff buld of work here
-        #func to get
-        # ourstuff check for diff backup
-        if self.args.command == 'create_diff':
-            self.manifest_class.backup_snapshot_id.add(snapshot_id)
-            self.manifest_class.backup_leaders = tablet_leaders.copy()
-            self.manifest_class.storage_backup_location = self.args.backup_location
-            self.manifest_class.storage_backup_location_type = self.args.storage_type
-            self.manifest_class.storage_keyspace = self.args.keyspace
-            self.manifest_class.storage_table = self.args.table
-            #logging.info('%s running diff in backup_table',curr_manifest)
-
-        self.timer.log_new_phase("Upload snapshot directories")
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
-        logging.info(
-            '[app] Backed up tables %s to %s successfully!' %
-            (self.table_names_str(), snapshot_filepath))
-        if self.args.backup_keys_source:
-            self.upload_encryption_key_file()
-        print(json.dumps({"snapshot_url": snapshot_filepath}))
-
-    def download_file(self, src_path, target_path):
+    def download_file(self, src_path, target_path, run_local=False):
         """
         Download the file from the external source to the local temporary folder.
         """
-        if self.args.local_yb_admin_binary:
+        if self.args.local_yb_admin_binary or run_local:
             if not self.args.disable_checksums:
                 checksum_downloaded = checksum_path_downloaded(target_path)
                 self.run_program(
@@ -2097,17 +2288,317 @@ class YBBackup:
         logging.info(
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
-#ourstuff gus entry point for code
-#might want to reorg this func so not to many dupes, gus
 
-    def download_metadata_file(self):
+    def try_download_metadata(self, src, dest, raise_exception):
+        try:
+            self.download_file(src, dest)
+        except subprocess.CalledProcessError as ex:
+            if raise_exception:
+                raise ex
+            else:
+                logging.info("Ignoring the exception in downloading of {}: {}".
+                             format(src, ex))
+                dest = None
+        return (dest)
+
+    def create_manifest(self, current_manifest, files):
+        compare_set_curr = set()
+        copy_set_curr = set()
+        curr_manifest = dict()
+        for key, value in files.items():
+            for record in value:
+                fields = record.split("/")
+                generation = 1
+                # filename_full_path = fields[0].split("/")
+                table = fields[-4].split("-")[1]
+                tablet = fields[-3].split("-")[1].split(".")[0]
+                file = fields[-1]
+                dict_key =(tablet + "/" + file)
+                # if not current_manifest.storage_tablet_ids[tablet]:
+                #     current_manifest.storage_tablet_ids[tablet] = list()
+                if not current_manifest.storage_tablet_ids:
+                    current_manifest.storage_tablet_ids = dict()
+                # current_manifest.storage_tablet_ids[tablet].append(
+                #     {'filename': file, 'generation': generation, 'src_location': record})
+                curr_manifest[dict_key] = \
+                    {'filename': file, 'generation': generation, 'src_location': record}
+                # current_manifest.storage_tablet_ids[tablet].append(curr_manifest[dict_key])
+                # curr_manifest.append(dict_key)
+                if file.find(".sst") != -1:
+                    compare_set_curr.add(dict_key)
+                else:
+                    copy_set_curr.add(dict_key)
+        return (curr_manifest, compare_set_curr, copy_set_curr)
+
+    def backup_table(self):
+        """
+        Creates a backup of the given table by creating a snapshot and uploading it to the provided
+        backup location.
+        """
+
+        if not self.args.keyspace:
+            raise BackupException('Need to specify --keyspace')
+
+        if self.args.table:
+            if self.is_ysql_keyspace():
+                raise BackupException(
+                    "Back up for YSQL is only supported at the database level, "
+                    "and not at the table level.")
+
+            logging.info('[app] Backing up tables: {} to {}'.format(
+                self.table_names_str(), self.args.backup_location))
+        else:
+            if len(self.args.keyspace) != 1:
+                raise BackupException(
+                    "Only one keyspace supported. Found {} --keyspace keys.".
+                        format(len(self.args.keyspace)))
+
+            logging.info('[app] Backing up keyspace: {} to {}'.format(
+                self.args.keyspace[0], self.args.backup_location))
+
+        if self.args.no_auto_name:
+            snapshot_filepath = self.args.backup_location
+        else:
+            if self.args.table:
+                snapshot_bucket = 'table-{}'.format(self.table_names_str('.', '-'))
+            else:
+                snapshot_bucket = 'keyspace-{}'.format(self.args.keyspace[0])
+
+            if self.args.table_uuid:
+                if len(self.args.table) != len(self.args.table_uuid):
+                    raise BackupException(
+                        "Found {} --table_uuid keys and {} --table keys. Number of these keys "
+                        "must be equal.".format(len(self.args.table_uuid), len(self.args.table)))
+
+                snapshot_bucket = '{}-{}'.format(snapshot_bucket, '-'.join(self.args.table_uuid))
+
+            snapshot_filepath = os.path.join(self.args.backup_location, snapshot_bucket)
+
+        self.timer.log_new_phase("Create and upload snapshot metadata")
+        snapshot_id = self.create_and_upload_metadata_files(snapshot_filepath)
+
+        self.timer.log_new_phase("Find tablet leaders")
+        tablet_leaders = self.find_tablet_leaders()
+        server_ip = self.get_leader_master_ip()
+
+        # Get a list of all the files to be differentially backed up
+        files = self.get_filelist(tablet_leaders, snapshot_id, snapshot_filepath)
+
+        # Build the current manifest
+        (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files)
+        # self.manifest_class.backup_local_dir_files = copy.deepcopy(curr_manifest)
+        print("\ncurr_manifest\n",curr_manifest)
+
+        previous_manifest_source = self.args.prev_manifest_source
+
+        if previous_manifest_source and self.is_differential_backup():
+            prev_manifestfile = os.path.join(previous_manifest_source, MANIFEST)
+            dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
+            try:
+                self.download_file(prev_manifestfile, dest_path, run_local=True)
+                self.is_differential_backup = True
+            except:
+                self.is_differential_backup = False
+                logging.info("Previous manifest not found, proceeding with full backup")
+        else:
+            self.is_differential_backup = False
+            logging.info("Previous manifest source defined but command is not \"create_diff\", proceeding with full backup.")
+
+        for key in tablet_leaders:
+            self.manifest_class.storage_tablet_ids.setdefault(key[0], {})
+
+        final_manifest = dict()
+        if self.is_differential_backup:
+            compare_set_prev = set()
+            copy_set_prev = set()
+            # prev_manifestfile = os.path.join(previous_manifest_source, MANIFEST)
+            # dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
+            # self.download_file(prev_manifestfile, dest_path, run_local=True)
+
+            prev_manifest = dict()
+
+            with open(dest_path, 'r') as fp:
+                contents = fp.read()
+            # prev_manifest = ast.literal_eval(contents)
+            self.prev_manifest_class.storage_tablet_ids = ast.literal_eval(contents)
+
+            for tablet in self.prev_manifest_class.storage_tablet_ids:
+                for file in self.prev_manifest_class.storage_tablet_ids[tablet]:
+                    prev_manifest[tablet + "/" + file] = self.prev_manifest_class.storage_tablet_ids[tablet][file]
+
+            print("\nprev_manifest\n", prev_manifest)
+
+            # Create the set of files to copy and compare from the previous backup
+            for key in  prev_manifest.keys():
+                if prev_manifest[key]['filename'].find(".sst") != -1:
+                    compare_set_prev.add(key)
+                else:
+                    copy_set_prev.add(key)
+
+            # If there is no previous manifest, the sets will be empty
+            files_in_both = compare_set_curr & compare_set_prev
+            files_in_prev = compare_set_prev - compare_set_curr
+            files_in_curr = compare_set_curr - compare_set_prev
+
+            print("\n\n\nSets: ",
+                  "\nfiles_in_both_backups", files_in_both,
+                  "\nfiles_in_prev", files_in_prev,
+                  "\nfiles_in_new", files_in_curr, "\n\n\n")
+
+            dest_dir = self.args.backup_location
+
+            # Copy new files off-cluster
+            for key in files_in_curr:
+                final_manifest[key] = curr_manifest[key]
+                final_manifest[key]['action'] = ACTION_COPY
+                tablet = key.split("/")[0]
+                file = final_manifest[key]['filename']
+                self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
+
+                # self.upload_file(final_manifest[key]['src_location'], file_dest)
+
+            # Copy files that are always copied
+            for key in copy_set_curr:
+                final_manifest[key] = curr_manifest[key]
+                final_manifest[key]['action'] = ACTION_COPY
+                tablet = key.split("/")[0]
+                file = final_manifest[key]['filename']
+                self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
+                # file_dest = os.path.join(dest_dir,  "tablet-" + key)
+                # self.upload_file(final_manifest[key]['src_location'], file_dest)
+
+            # Update the current manifest with the previous information files
+            for key in files_in_both:
+                final_manifest[key] = prev_manifest[key]
+                if self.args.restore_points < prev_manifest[key]['generation']:
+                    final_manifest[key]['action'] = ACTION_MOVE
+                    final_manifest[key]['generation'] = 1
+                else:
+                    final_manifest[key]['action'] = ACTION_NOOP
+                    final_manifest[key]['generation'] = prev_manifest[key]['generation'] + 1
+                tablet = key.split("/")[0]
+                file = final_manifest[key]['filename']
+                self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
+
+            for key in final_manifest:
+                fields = key.split("/")
+                tablet = fields[0]
+                file = final_manifest[key]['filename']
+                self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
+
+            self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
+
+            for key, value in files.items():
+                print("key ", key, "\n", "type of key ", type(key), "\nvalue ", value, "\ntype of value", type(value))
+
+            # self.timer.log_new_phase("Upload files")
+            # Parallel upload files
+            # logging.info(
+            #     '[app] Backed up tables %s to %s successfully!' %
+            #     (self.table_names_str(), snapshot_filepath))
+
+        else:
+            for key in curr_manifest:
+                fields = key.split("/")
+                tablet = fields[0]
+                file = curr_manifest[key]['filename']
+                self.manifest_class.storage_tablet_ids[tablet][file] = curr_manifest[key]
+                self.manifest_class.storage_tablet_ids[tablet][file]['action'] = ACTION_COPY
+
+            self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
+            self.timer.log_new_phase("Upload snapshot directories")
+            # self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+            logging.info(
+                '[app] Backed up tables %s to %s successfully!' %
+                (self.table_names_str(), snapshot_filepath))
+
+        # upload manifest
+
+        # manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
+        # with open(manifestfile, 'w') as fp:
+        #     print(final_manifest, file=fp)
+
+        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+
+        manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
+        with open(manifestfile, 'w') as fp:
+            print(self.manifest_class.storage_tablet_ids, file=fp)
+
+        manifest_source = self.args.backup_location
+        manifest_dest = os.path.join(manifest_source, MANIFEST)
+        self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
+
+        if self.args.verbose:
+            logging.info("Upload {} to server {} done: ".format(
+                manifestfile, server_ip))
+        if self.args.backup_keys_source:
+            self.upload_encryption_key_file()
+        # print(json.dumps({"snapshot_url": snapshot_filepath}))
+
+    def download_file(self, src_path, target_path, run_local=False):
+        """
+        Download the file from the external source to the local temporary folder.
+        """
+        if self.args.local_yb_admin_binary or run_local:
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_program(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
+            self.run_program(
+                self.storage.download_file_cmd(src_path, target_path))
+
+            if not self.args.disable_checksums:
+                self.run_program(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
+                check_checksum_res = self.run_program(
+                    compare_checksums_cmd(checksum_downloaded,
+                                          checksum_path(target_path))).strip()
+        else:
+            server_ip = self.get_leader_master_ip()
+            if not self.args.disable_checksums:
+                checksum_downloaded = checksum_path_downloaded(target_path)
+                self.run_ssh_cmd(
+                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
+                    server_ip)
+            self.run_ssh_cmd(
+                self.storage.download_file_cmd(src_path, target_path),
+                server_ip)
+
+            if not self.args.disable_checksums:
+                self.run_ssh_cmd(
+                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
+                    server_ip)
+                check_checksum_res = self.run_ssh_cmd(
+                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
+                    server_ip).strip()
+
+        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
+            raise BackupException('Check-sum for {} is {}'.format(
+                target_path, check_checksum_res))
+
+        logging.info(
+            'Downloaded metadata file %s from %s' % (target_path, src_path))
+
+    def try_download_metadata(self, src, dest, raise_exception, run_local=False):
+        try:
+            self.download_file(src, dest, run_local=run_local)
+        except subprocess.CalledProcessError as ex:
+            if raise_exception:
+                raise ex
+            else:
+                logging.info("Ignoring the exception in downloading of {}: {}".
+                             format(src, ex))
+                dest = None
+        return (dest)
+
+
+    def download_metadata_file(self, run_local=False):
         #
         """
         Download the metadata file for a backup so as to perform a restore based on it.
         """
-        #ourstuff at this point curr_manfiest is loaded with some data
-        #is only called in
-        if self.args.local_yb_admin_binary:
+
+        if self.args.local_yb_admin_binary or run_local:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
             self.create_remote_tmp_dir(self.get_leader_master_ip())
@@ -2115,28 +2606,14 @@ class YBBackup:
         src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
         self.download_file(src_metadata_path, metadata_path)
-
         src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
         sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
-#ourstuff 6 this is an example of how to check for a manifest as manifest always has same file name
-# note for reference can be executed on any node in the cluster
-        #maybe abstract into a new func, generic with a filename test if exist
-        try:
-            self.download_file(src_sql_dump_path, sql_dump_path)
-        except subprocess.CalledProcessError as ex:
-            if self.is_ysql_keyspace():
-                raise ex
-            else:
-                # Possibly this is YCQL backup (no way to determite it exactly at this point).
-                # Try to ignore YSQL dump - YSQL table restoring will fail a bit later
-                # on 'import_snapshot' step.
-                logging.info("Ignoring the exception in downloading of {}: {}".
-                             format(src_sql_dump_path, ex))
-                sql_dump_path = None
-#need to return the manifest for the backup restoring , MANIFEST is default name
-#may need to change all calls karwgs.. overloaded.. so if no manifest return none.
-        #gus... s
-        return (metadata_path, sql_dump_path)
+        sql_dump_path = self.try_download_metadata(src_sql_dump_path, sql_dump_path, self.is_ysql())
+        src_manifest_dump_path = os.path.join(self.args.backup_location, MANIFEST)
+        manifest_dump_path = os.path.join(self.get_tmp_dir(), MANIFEST)
+        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path,
+ 					manifest_dump_path, False, run_local=True)
+        return (metadata_path, sql_dump_path, manifest_dump_path)
 
     def import_ysql_dump(self, dump_file_path):
         """
@@ -2295,6 +2772,14 @@ class YBBackup:
 
         return tserver_to_deleted_tablets
 
+    def restore_table_diff(self):
+        logging.info('Start restore of the backup from diff savepoint')
+
+        #need to add our diff stuff and call yb_admin_run() ?
+
+        logging.info('Restored backup successfully!')
+        print(json.dumps({"success": True}))
+
     def restore_table(self):
         #ourstuff need to add a if check for if I find manifest
         """
@@ -2305,6 +2790,14 @@ class YBBackup:
                 raise BackupException('Only one --keyspace expected for the restore mode.')
         elif self.args.table:
             raise BackupException('Need to specify --keyspace')
+
+        if self.args.prev_manifest_source:
+            print('running diff restore with previuos manifest: ',self.args.prev_manifest_source)
+            print('savepoint number',self.args.savepoint_number)
+            logging.info('Restoring backup from diff savepoint')
+            self.restore_table_diff()
+            #do we get the backup_location from the manifest or the command line arg?
+
 
         # TODO (jhe): Perform verification for restore_time. Need to check for:
         #  - Verify that the timestamp given fits in the history retention window for the snapshot
@@ -2351,6 +2844,9 @@ class YBBackup:
             #where exit here to the func for download files not directories ..
             #if in diff mode do the func download files else do what they do ..
             #else do this following line
+
+            # download file by file from the manifest
+            # n
             tserver_to_deleted_tablets = self.download_snapshot_directories(
                 snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
 
@@ -2425,7 +2921,7 @@ class YBBackup:
         if self.args.verbose:
             logging.info("Removing temporary directory '{}'".format(tmp_dir))
 
-        self.run_program(['rm', '-rf', tmp_dir])
+        # self.run_program(['rm', '-rf', tmp_dir])
 
     def cleanup_remote_temporary_directory(self, server_ip, tmp_dir):
         """
@@ -2435,7 +2931,7 @@ class YBBackup:
             logging.info("Removing remote temporary directory '{}' on {}".format(
                 tmp_dir, server_ip))
 
-        self.run_ssh_cmd(['rm', '-rf', tmp_dir], server_ip)
+        # self.run_ssh_cmd(['rm', '-rf', tmp_dir], server_ip)
 
     def delete_created_snapshot(self, snapshot_id):
         """
@@ -2446,20 +2942,71 @@ class YBBackup:
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
+    def run_diff_backup(self):
+        #gus's code the hero not a zero.. hard stuff
+        logging.info("Start run Diff backup ...")
+        logging.info("Complete run Diff SAVEPOINT backup ...")
+        self.backup_table()
+
     def backup_diff(self):
+        '''
+        Diff backup can take 2 forms 1 a full or 2 a savepoint
+        to get here checked for arg --create_diff and if true run this code
+        :return:
+        '''
         logging.info("Start backup diff ...")
 
-        logging.info("Start init of manifest calling backup table ...")
+
+        #need to check for type of diff, full or a savepoint
+        #use the arg for manifest location as check . if no manidfest loation then default to a full
+        #otherwise run a savepoint
+        if self.args.prev_manifest_source is not None:
+            #run a savepoint
+            logging.info("Start Diff SAVEPOINT backup ...")
+            print('running a savepoint')
+            self.manifest_class.manifest_type = 'SAVEPOINT'
+            self.manifest_class.manifest_status = 'init'
+            self.manifest_class.backup_create_date = str(date.today())
+            #load last savepoint json
+            #currentcode
+            session = boto3.Session()
+            s3_bucket_name = self.args.prev_manifest_source
+            s3_client = session.client('s3')
+            FILE_TO_READ = './MANIFEST_TEST_FULL'
+            manifest_last_savepoint_obj = s3 = boto3.client('s3')
+            # my_bucket = s3.Bucket(s3_bucket_name)
+            # result = manifest_last_savepoint_obj.get_object(Bucket=s3_bucket_name, Key=FILE_TO_READ)
+            #s3_clientobj = manifest_last_savepoint_obj.get_object(Bucket=self.args.prev_manifest_source, Key='MANIFEST_TEST_FULL')
+            #manifest_last_savepoint = s3_clientobj['Body'].read().decode('utf-8')
+            #print(manifest_last_savepoint)
+
+            #now run the differential backup saving only the changed SST files
+            self.run_diff_backup()
+            print(self.manifest_class.json_out())
+        else:
+            #run full backup
+            logging.info("Start Diff FULL backup")
+            self.manifest_class.manifest_type = 'FULL'
+            self.manifest_class.manifest_status = 'init'
+            self.manifest_class.backup_create_date = str(date.today())
+            self.backup_table()
+
+        #check for and retrieve last diff manifest
+        #load json file
+        #load prev manifest class from json object? wonder if ovrkill
+
+        #if prev set diff type to SAVEPOINT and run the process to get diff
+
+        #if no prev manifest set diff type to FULL just run a full backup
+
         #initilize a new manifest
         manifest_id = uuid.uuid1()
         #manifest_class = model.Manifest(manifest_id)
         #self.manifest_class.manifest_name = str('manifest'+self.manifest_class.manifest_id)
-        self.manifest_class.manifest_type = 'diff_backup'
-        self.manifest_class.manifest_status = 'init'
-        self.manifest_class.backup_create_date = str(date.today())
+
         logging.info("Finished init of manifest calling backup table ...",self.manifest_class.to_json_dict())
 
-        self.backup_table()
+
 
     def run(self):
         #roustuff command under create diff create_diff
@@ -2488,7 +3035,7 @@ class YBBackup:
         finally:
             self.timer.print_summary()
             print('final-json')
-            print(self.manifest_class.json_out())
+           # print(self.manifest_class.json_out())
 
             #print(self.manifest_class.json_out()) #ourstuff
 
@@ -2499,3 +3046,59 @@ if __name__ == "__main__":
     #3manifest_class = model.Manifest(manifest_id)
     YBBackup().run()
     print('success')
+
+"""
+PARAMETERS 
+--masters
+10.0.0.241
+--parallelism
+8
+--keyspace
+ybdemo_keyspace
+--table
+cassandrakeyvalue
+--ssh_port
+54422
+--ssh_key_path
+/Users/gr/mycerts/yb-dev-aws-dev2_ecb5a67c-eca4-4aad-add7-be49a5623b9a-key.pem
+--no_auto_name
+--verbose
+--no_snapshot_deleting
+--storage_type
+s3
+--backup_location
+s3://differential-backup-areyna/test-2021-10-23-0034
+--disable_checksums
+--prev_manifest_source
+put s3 uri here
+--snapshot_id
+36a9f876-fa3f-4936-bbef-d61cef381b1b
+create_diff
+"""
+"""
+--masters
+10.0.0.241
+--parallelism
+8
+--keyspace
+ybdemo_keyspace
+--table
+cassandrakeyvalue
+--ssh_port
+54422
+--ssh_key_path
+/Users/gr/mycerts/yb-dev-aws-dev2_ecb5a67c-eca4-4aad-add7-be49a5623b9a-key.pem
+--no_auto_name
+--verbose
+--no_snapshot_deleting
+--storage_type
+s3
+--backup_location
+s3://differential-backup-areyna/diff_backup/snapshot-18-test
+--disable_checksums
+--snapshot_id
+bf63b923-f90f-4d3b-819f-1069eec2be17
+--prev_manifest_source
+s3://differential-backup-areyna/diff_backup/snapshot-18
+create_diff
+"""
