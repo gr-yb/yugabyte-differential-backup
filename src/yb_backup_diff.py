@@ -39,8 +39,6 @@ import boto3
 
 # import model
 
-PREV_MANIFEST = 'PREV_MANIFEST'
-# PREV_MANIFEST = 'MANIFEST'
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
 COLOCATED_UUID_SUFFIX = '.colocated.parent.uuid'
@@ -94,6 +92,7 @@ CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
 
+MANIFEST_JSON = "MANIFEST_JSON"
 MANIFEST = 'MANIFEST'
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
@@ -138,7 +137,7 @@ class Manifest():
         self.storage_files_dict = dict()
         self.backup_name = ""
         self.backup_id = ""
-        self.backup_snapshot_id = set()
+        self.backup_snapshot_id = dict()
         self.backup_leaders = list()
         self.backup_create_date = ""
         self.backup_start_time = ""
@@ -166,26 +165,26 @@ class Manifest():
             "name": self.database_name, "type": self.database_type, "database_tables": str(self.database_tables),"database_objects": str(self.database_objects)
         },
             "storage": {
-                "backup_location": self.storage_backup_location,
-                "backup_location_type": self.storage_backup_location_type,
-                "storage_keyspace": self.storage_keyspace,
-                "storage_table": self.storage_table,
-                "table_id": str(self.storage_table_ids),
-                "tablet_id": str(self.storage_tablet_ids),
-                "files": str(self.storage_files)
+                "location": self.storage_backup_location,
+                "location_type": self.storage_backup_location_type,
+                "keyspace": self.storage_keyspace,
+                "table": self.storage_table,
+                "table_id": (self.storage_table_ids),
+                "tablet_ids": self.storage_tablet_ids,
+                "files": (self.storage_files)
             }
             , "backup": {
                 "name": self.backup_name,
-                "backup_snapshot_id": str(self.backup_snapshot_id),
-                "backup_tablet_leaders": str(self.backup_leaders),
+                "snapshot_id": (self.backup_snapshot_id),
+                "tablet_leaders": (self.backup_leaders),
                 "create_date": self.backup_create_date,
                 "start_time": self.backup_start_time,
                 "end_time": self.backup_end_time,
-                "local_directories": str(self.backup_local_dirs),
-                'local_directories_set': str(self.backup_local_dir_set),
-                "local_backup_local_dir_files": str(self.backup_local_dir_files),
-                "message": str(self.backup_messages),
-                "error": str(self.backup_errors)
+                "local_directories": (self.backup_local_dirs),
+                "local_directories_set": (self.backup_local_dir_set),
+                "local_backup_local_dir_files": (self.backup_local_dir_files),
+                "message": (self.backup_messages),
+                "error": (self.backup_errors)
             }
         }}
         return manifest_json
@@ -212,7 +211,6 @@ class CompatibilityException(BackupException):
 
 def split_by_tab(line):
     return [item.replace(' ', '') for item in line.split("\t")]
-
 
 def split_by_space(line):
     items = []
@@ -765,11 +763,10 @@ class YBBackup:
              '-and',
              '-wholename', TABLET_DIR_GLOB.format(table_id)],
             tserver_ip)
-        print('output',type(output),output)
-
-        print('files-list',files,'type of files ',type(files))
+        if self.args.verbose:
+            logging.info( '\nGet_files output {}\nType of files {}\n'.format(
+                files,  type(files)))
         #iterate over the list and add all values as key value pair in manifest.dict.
-        #currentcode
         for file_name in files:
             local_fils_dict = {file_name: server_ip}
             self.manifest_class.backup_local_dir_files.update(local_fils_dict)
@@ -1621,7 +1618,7 @@ class YBBackup:
              '-wholename', DIFF_SNAPSHOT_DIR_GLOB + snapshot_id + "*"],
             tserver_ip)
         #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
-        print('output',output)
+        # print('output',output)
         #print('manifest json',self.manifest_class.json_out())
         # print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
@@ -1640,18 +1637,22 @@ class YBBackup:
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
-        print('tablets_by_leader_ip', type(tablets_by_leader_ip), tablets_by_leader_ip)
+        if self.args.verbose:
+            logging.info('Tablets_by_leader_ip {} {}'.format(type(tablets_by_leader_ip), tablets_by_leader_ip))
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
-        print('tserver_ips', type(tserver_ips), tserver_ips)
+        if self.args.verbose:
+            logging.info('Tablets_by_leader_ip {} {}'.format(type(tablets_by_leader_ip), tablets_by_leader_ip))
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
-        print('data_dir_by_tserver', type(data_dir_by_tserver), data_dir_by_tserver)
+        if self.args.verbose:
+            logging.info('\nData_dir_by_tserver\n{}\n{}\n'.format( type(data_dir_by_tserver), data_dir_by_tserver))
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
 
         parallel_find_files = MultiArgParallelCmd(self.find_snapshot_files)
-        print('parallel_find_files', parallel_find_files)
+        if self.args.verbose:
+            logging.info('Parallel_find_files {} '.format(parallel_find_files))
 
         tservers_processed = []
         while len(tserver_ips) > len(tservers_processed):
@@ -1669,12 +1670,8 @@ class YBBackup:
                         tservers_processed += [tserver_ip]
 
         find_snapshot_file_results = parallel_find_files.run(pool)
-        print('find_snapshot_file_results', 'type', type(find_snapshot_file_results), find_snapshot_file_results)
-
-        # self.manifest_class.backup_local_dirs.update(find_snapshot_file_results)
-        # self.manifest_class.backup_local_dir_set.append(find_snapshot_file_results)
-        # print('local_dirs manifest',self.manifest_class.json_out())
-        # self.get_files(tablet_leaders,snapshot_id, snapshot_filepath)
+        if self.args.verbose:
+            logging.info('Find_snapshot_file_results type {} \n{}'.format(type(find_snapshot_file_results), find_snapshot_file_results))
 
         return find_snapshot_file_results
 
@@ -1699,9 +1696,9 @@ class YBBackup:
              '-wholename', SNAPSHOT_DIR_GLOB],
             tserver_ip)
         #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
-        print('output',output)
+        # print('output',output)
         #print('manifest json',self.manifest_class.json_out())
-        print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
+        # print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
 
 
@@ -1719,21 +1716,19 @@ class YBBackup:
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
-        print('tablets_by_leader_ip',type(tablets_by_leader_ip),tablets_by_leader_ip)
+        # print('tablets_by_leader_ip',type(tablets_by_leader_ip),tablets_by_leader_ip)
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
-        print('tserver_ips',type(tserver_ips),tserver_ips)
+        # print('tserver_ips',type(tserver_ips),tserver_ips)
         #ourstuff
         data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
-        print('data_dir_by_tserver',type(data_dir_by_tserver),data_dir_by_tserver)
+        # print('data_dir_by_tserver',type(data_dir_by_tserver),data_dir_by_tserver)
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
-#ourstuff
-
 
         parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
-        print('parallel_find_snapshots',parallel_find_snapshots)
+        # print('parallel_find_snapshots',parallel_find_snapshots)
         # add depth for files?
 
         tservers_processed = []
@@ -1753,7 +1748,7 @@ class YBBackup:
 #here is where we find the snapshots
         #set of results
         find_snapshot_dir_results = parallel_find_snapshots.run(pool)
-        print('find_snapshot_dir_results','type',type(find_snapshot_dir_results),find_snapshot_dir_results)
+        # print('find_snapshot_dir_results','type',type(find_snapshot_dir_results),find_snapshot_dir_results)
 
 
         # if self.is_differential_backup():
@@ -1768,7 +1763,7 @@ class YBBackup:
 #transaltes to ssh commands.. out here no code here for metadata somewhere above this line in this func
 
         parallel_uploads = SequencedParallelCmd(self.run_ssh_cmd)
-        print('parallel_uploads',type(parallel_uploads))
+        # print('parallel_uploads',type(parallel_uploads))
 
         self.prepare_cloud_ssh_cmds(
              parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
@@ -1830,7 +1825,7 @@ class YBBackup:
                 #get list of files for the manifest
                 tablet_id_to_snapshot_dirs.setdefault(tablet_id, set()).add(snapshot_dir)
 
-        print('tserver_ip_to_tablet_id_to_snapshot_dirs',type(tserver_ip_to_tablet_id_to_snapshot_dirs),tserver_ip_to_tablet_id_to_snapshot_dirs)
+        # print('tserver_ip_to_tablet_id_to_snapshot_dirs',type(tserver_ip_to_tablet_id_to_snapshot_dirs),tserver_ip_to_tablet_id_to_snapshot_dirs)
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
@@ -1889,35 +1884,34 @@ class YBBackup:
         # if has_manifest():
         # if self.is_differential_backup:
         if not 'DIRECTORY' in self.manifest_class.storage_tablet_ids[tablet_id].keys():
+           if self.args.verbose:
+                logging.info("\n\nUploading files\n\n")
         # **********************************
-        # ITERATE HERE FOR differential backup
-        # instead of snapshot_dir use file
-        # Append filename to target_tablet_filepath
-        # Determine action before getting here
-        # S3 URI will be in manifest
         # Actions: move or copy or ignore
-        # 1 - noop 2 - move 3 - copy.
+        # 1 - copy  2 - move 3 - noop.
         # **********************************
            for file in self.manifest_class.storage_tablet_ids[tablet_id]:
               target_filename = os.path.join(target_filepath, file)
-              if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_NOOP:
+              if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_NOOP:
                  pass
               else:
-                 if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_COPY:
-                    upload_file_cmd = self.storage.upload_file_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'], target_filepath)
+                 if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_COPY:
+                    upload_file_cmd = self.storage.upload_file_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
                     parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
                  else:
-                     if self.manifest_class.storage_tablet_ids[tablet_id][file]['action'] == ACTION_MOVE:
-                         upload_file_cmd = self.storage.move_obj_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'], target_filepath)
+                     if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_MOVE:
+                         upload_file_cmd = self.storage.move_obj_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
                  parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
-                 self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location'] = copy.deepcopy(target_filename)
+                 self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"] = copy.deepcopy(target_filename)
         else:
             # 3. Upload tablet folder.
+            if self.args.verbose:
+                logging.info("\n\nUploading directories\n\n")
             upload_tablet_cmd = self.storage.upload_dir_cmd(snapshot_dir, target_filepath)
             parallel_commands.add_args(tuple(upload_tablet_cmd), tserver_ip)
             for file in self.manifest_class.storage_tablet_ids[tablet_id]:
                 target_filename = os.path.join(target_filepath, file)
-                self.manifest_class.storage_tablet_ids[tablet_id][file]['src_location']= copy.deepcopy(target_filename)
+                self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"]= copy.deepcopy(target_filename)
             del self.manifest_class.storage_tablet_ids[tablet_id]['DIRECTORY']
 
     def prepare_download_command(self, parallel_commands, snapshot_filepath, tablet_id,
@@ -2306,29 +2300,32 @@ class YBBackup:
         copy_set_curr = set()
         curr_manifest = dict()
         for key, value in files.items():
-            for record in value:
-                fields = record.split("/")
+            for filename in value:
+                fields = filename.split("/")
                 generation = 1
-                # filename_full_path = fields[0].split("/")
                 table = fields[-4].split("-")[1]
                 tablet = fields[-3].split("-")[1].split(".")[0]
                 file = fields[-1]
                 dict_key =(tablet + "/" + file)
-                # if not current_manifest.storage_tablet_ids[tablet]:
-                #     current_manifest.storage_tablet_ids[tablet] = list()
                 if not current_manifest.storage_tablet_ids:
                     current_manifest.storage_tablet_ids = dict()
-                # current_manifest.storage_tablet_ids[tablet].append(
-                #     {'filename': file, 'generation': generation, 'src_location': record})
                 curr_manifest[dict_key] = \
-                    {'filename': file, 'generation': generation, 'src_location': record}
-                # current_manifest.storage_tablet_ids[tablet].append(curr_manifest[dict_key])
-                # curr_manifest.append(dict_key)
+                    {"filename": file, "generation": generation, "src_location": filename}
                 if file.find(".sst") != -1:
                     compare_set_curr.add(dict_key)
                 else:
                     copy_set_curr.add(dict_key)
         return (curr_manifest, compare_set_curr, copy_set_curr)
+
+    def get_manifest(self, dest_path):
+        with open(dest_path, 'r') as fp:
+            json_dict = json.load(fp)
+        self.prev_manifest_class.storage_tablet_ids = json_dict['manifest']['storage']['tablet_ids']
+
+    def write_manifest(self):
+        manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
+        with open(manifestfile, 'w') as fp:
+            json.dump(self.manifest_class.to_json_dict(), fp)
 
     def backup_table(self):
         """
@@ -2379,16 +2376,18 @@ class YBBackup:
 
         self.timer.log_new_phase("Find tablet leaders")
         tablet_leaders = self.find_tablet_leaders()
-        server_ip = self.get_leader_master_ip()
 
+        self.timer.log_new_phase("Get snapshot files and create manifest")
         # Get a list of all the files to be differentially backed up
         files = self.get_filelist(tablet_leaders, snapshot_id, snapshot_filepath)
 
         # Build the current manifest
         (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files)
-        # self.manifest_class.backup_local_dir_files = copy.deepcopy(curr_manifest)
-        print("\ncurr_manifest\n",curr_manifest)
+        if self.args.verbose:
+            logging.info("Current manifest {}:  ".format(
+                curr_manifest))
 
+        self.timer.log_new_phase("Get the previous manifest for differential backup")
         previous_manifest_source = self.args.prev_manifest_source
 
         if previous_manifest_source and self.is_differential_backup():
@@ -2409,128 +2408,119 @@ class YBBackup:
 
         final_manifest = dict()
         if self.is_differential_backup:
+            self.timer.log_new_phase("Run differential backup")
             compare_set_prev = set()
             copy_set_prev = set()
-            # prev_manifestfile = os.path.join(previous_manifest_source, MANIFEST)
-            # dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
-            # self.download_file(prev_manifestfile, dest_path, run_local=True)
 
             prev_manifest = dict()
+            self.get_manifest(dest_path)
 
-            with open(dest_path, 'r') as fp:
-                contents = fp.read()
-            # prev_manifest = ast.literal_eval(contents)
-            self.prev_manifest_class.storage_tablet_ids = ast.literal_eval(contents)
-
+            # self.prev_manifest_class.storage_tablet_ids =  json_dict['manifest']['storage']['tablet_ids']
             for tablet in self.prev_manifest_class.storage_tablet_ids:
                 for file in self.prev_manifest_class.storage_tablet_ids[tablet]:
                     prev_manifest[tablet + "/" + file] = self.prev_manifest_class.storage_tablet_ids[tablet][file]
 
-            print("\nprev_manifest\n", prev_manifest)
+            if self.args.verbose:
+                logging.info('\nPrevious manifest\n{}'.format(prev_manifest))
 
             # Create the set of files to copy and compare from the previous backup
             for key in  prev_manifest.keys():
-                if prev_manifest[key]['filename'].find(".sst") != -1:
+                if prev_manifest[key]["filename"].find(".sst") != -1:
                     compare_set_prev.add(key)
                 else:
                     copy_set_prev.add(key)
 
-            # If there is no previous manifest, the sets will be empty
             files_in_both = compare_set_curr & compare_set_prev
             files_in_prev = compare_set_prev - compare_set_curr
             files_in_curr = compare_set_curr - compare_set_prev
 
-            print("\n\n\nSets: ",
-                  "\nfiles_in_both_backups", files_in_both,
-                  "\nfiles_in_prev", files_in_prev,
-                  "\nfiles_in_new", files_in_curr, "\n\n\n")
+            if self.args.verbose:
+                logging.info(
+                   "\n\n\nSets: \nfiles_in_both_backups {}\nfiles_in_prev {}\nfiles_in_curr {}\n\n\n".format(
+                        files_in_both, files_in_prev, files_in_curr  ))
 
-            dest_dir = self.args.backup_location
+            # dest_dir = self.args.backup_location
 
             # Copy new files off-cluster
             for key in files_in_curr:
                 final_manifest[key] = curr_manifest[key]
-                final_manifest[key]['action'] = ACTION_COPY
+                final_manifest[key]["action"] = ACTION_COPY
                 tablet = key.split("/")[0]
-                file = final_manifest[key]['filename']
+                file = final_manifest[key]["filename"]
                 self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
-
-                # self.upload_file(final_manifest[key]['src_location'], file_dest)
 
             # Copy files that are always copied
             for key in copy_set_curr:
                 final_manifest[key] = curr_manifest[key]
-                final_manifest[key]['action'] = ACTION_COPY
+                final_manifest[key]["action"] = ACTION_COPY
                 tablet = key.split("/")[0]
-                file = final_manifest[key]['filename']
+                file = final_manifest[key]["filename"]
                 self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
-                # file_dest = os.path.join(dest_dir,  "tablet-" + key)
-                # self.upload_file(final_manifest[key]['src_location'], file_dest)
 
             # Update the current manifest with the previous information files
             for key in files_in_both:
                 final_manifest[key] = prev_manifest[key]
-                if self.args.restore_points < prev_manifest[key]['generation']:
-                    final_manifest[key]['action'] = ACTION_MOVE
-                    final_manifest[key]['generation'] = 1
+                if self.args.restore_points < prev_manifest[key]["generation"]:
+                    final_manifest[key]["action"] = ACTION_MOVE
+                    final_manifest[key]["generation"] = 1
                 else:
-                    final_manifest[key]['action'] = ACTION_NOOP
-                    final_manifest[key]['generation'] = prev_manifest[key]['generation'] + 1
+                    final_manifest[key]["action"] = ACTION_NOOP
+                    final_manifest[key]["generation"] = prev_manifest[key]["generation"] + 1
                 tablet = key.split("/")[0]
-                file = final_manifest[key]['filename']
+                file = final_manifest[key]["filename"]
                 self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
 
             for key in final_manifest:
                 fields = key.split("/")
                 tablet = fields[0]
-                file = final_manifest[key]['filename']
+                file = final_manifest[key]["filename"]
                 self.manifest_class.storage_tablet_ids[tablet][file] = final_manifest[key]
+
+            # If there are only new files, copy directories instead of individual files
+            # if files_in_curr and not files_in_both:
+            if files_in_curr and not files_in_both:
+                for tablet in self.manifest_class.storage_tablet_ids:
+                    self.manifest_class.storage_tablet_ids[tablet]['DIRECTORY'] = {}
 
             self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
 
-            for key, value in files.items():
-                print("key ", key, "\n", "type of key ", type(key), "\nvalue ", value, "\ntype of value", type(value))
-
-            # self.timer.log_new_phase("Upload files")
-            # Parallel upload files
-            # logging.info(
-            #     '[app] Backed up tables %s to %s successfully!' %
-            #     (self.table_names_str(), snapshot_filepath))
-
         else:
+            self.timer.log_new_phase("Run full backup")
+            for key in self.manifest_class.storage_tablet_ids:
+                self.manifest_class.storage_tablet_ids[key]['DIRECTORY'] = {}
             for key in curr_manifest:
                 fields = key.split("/")
                 tablet = fields[0]
-                file = curr_manifest[key]['filename']
+                file = curr_manifest[key]["filename"]
                 self.manifest_class.storage_tablet_ids[tablet][file] = curr_manifest[key]
-                self.manifest_class.storage_tablet_ids[tablet][file]['action'] = ACTION_COPY
+                self.manifest_class.storage_tablet_ids[tablet][file]["action"] = ACTION_COPY
 
             self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
-            self.timer.log_new_phase("Upload snapshot directories")
-            # self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
-            logging.info(
-                '[app] Backed up tables %s to %s successfully!' %
-                (self.table_names_str(), snapshot_filepath))
+
+        self.timer.log_new_phase("Upload snapshot directories")
+        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+        logging.info(
+            '[app] Backed up tables %s to %s successfully!' %
+            (self.table_names_str(), snapshot_filepath))
 
         # upload manifest
 
-        # manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
+        self.write_manifest()
         # with open(manifestfile, 'w') as fp:
-        #     print(final_manifest, file=fp)
+        #      json.dump(self.manifest_class.to_json_dict(), fp)
+        # json.dump(self.manifest_class.to_json_dict(), fp)
+        # print(self.manifest_class.storage_tablet_ids, file=fp)
 
-        self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
+        # manifest_json = manifestfile + "_json"
+        # with open(manifest_json , 'w') as fp:
+        #     json.dump(self.manifest_class.to_json_dict(), fp)
+
 
         manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
-        with open(manifestfile, 'w') as fp:
-            print(self.manifest_class.storage_tablet_ids, file=fp)
-
         manifest_source = self.args.backup_location
         manifest_dest = os.path.join(manifest_source, MANIFEST)
         self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
 
-        if self.args.verbose:
-            logging.info("Upload {} to server {} done: ".format(
-                manifestfile, server_ip))
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
         # print(json.dumps({"snapshot_url": snapshot_filepath}))
@@ -2943,9 +2933,8 @@ class YBBackup:
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
     def run_diff_backup(self):
-        #gus's code the hero not a zero.. hard stuff
         logging.info("Start run Diff backup ...")
-        logging.info("Complete run Diff SAVEPOINT backup ...")
+        # logging.info("Complete run Diff SAVEPOINT backup ...")
         self.backup_table()
 
     def backup_diff(self):
@@ -2963,7 +2952,6 @@ class YBBackup:
         if self.args.prev_manifest_source is not None:
             #run a savepoint
             logging.info("Start Diff SAVEPOINT backup ...")
-            print('running a savepoint')
             self.manifest_class.manifest_type = 'SAVEPOINT'
             self.manifest_class.manifest_status = 'init'
             self.manifest_class.backup_create_date = str(date.today())
@@ -3022,7 +3010,8 @@ class YBBackup:
                 self.delete_backup()
             elif self.args.command == 'create_diff': #ourstuff
                 #follow the same code flow as current code backuo_table
-                self.backup_diff()
+                # self.backup_diff()
+                self.run_diff_backup()
             else:
                 logging.error('Command was not specified')
                 print(json.dumps({"error": "Command was not specified"}))
@@ -3034,7 +3023,7 @@ class YBBackup:
             traceback.print_stack()
         finally:
             self.timer.print_summary()
-            print('final-json')
+            # print('final-json')
            # print(self.manifest_class.json_out())
 
             #print(self.manifest_class.json_out()) #ourstuff
@@ -3045,60 +3034,5 @@ if __name__ == "__main__":
     #manifest_id = uuid.uuid1()
     #3manifest_class = model.Manifest(manifest_id)
     YBBackup().run()
-    print('success')
+    # print('success')
 
-"""
-PARAMETERS 
---masters
-10.0.0.241
---parallelism
-8
---keyspace
-ybdemo_keyspace
---table
-cassandrakeyvalue
---ssh_port
-54422
---ssh_key_path
-/Users/gr/mycerts/yb-dev-aws-dev2_ecb5a67c-eca4-4aad-add7-be49a5623b9a-key.pem
---no_auto_name
---verbose
---no_snapshot_deleting
---storage_type
-s3
---backup_location
-s3://differential-backup-areyna/test-2021-10-23-0034
---disable_checksums
---prev_manifest_source
-put s3 uri here
---snapshot_id
-36a9f876-fa3f-4936-bbef-d61cef381b1b
-create_diff
-"""
-"""
---masters
-10.0.0.241
---parallelism
-8
---keyspace
-ybdemo_keyspace
---table
-cassandrakeyvalue
---ssh_port
-54422
---ssh_key_path
-/Users/gr/mycerts/yb-dev-aws-dev2_ecb5a67c-eca4-4aad-add7-be49a5623b9a-key.pem
---no_auto_name
---verbose
---no_snapshot_deleting
---storage_type
-s3
---backup_location
-s3://differential-backup-areyna/diff_backup/snapshot-18-test
---disable_checksums
---snapshot_id
-bf63b923-f90f-4d3b-819f-1069eec2be17
---prev_manifest_source
-s3://differential-backup-areyna/diff_backup/snapshot-18
-create_diff
-"""
