@@ -2295,16 +2295,24 @@ class YBBackup:
                 dest = None
         return (dest)
 
-    def create_manifest(self, current_manifest, files):
+    def create_manifest(self, current_manifest, files, tablet_leaders):
         compare_set_curr = set()
         copy_set_curr = set()
         curr_manifest = dict()
+        tablet_from_leader = set()
         for key, value in files.items():
+            tserver = key[2]
+            tablet_from_leader.clear()
+            for leader_tablet in tablet_leaders:
+                if leader_tablet[1] == tserver:
+                    tablet_from_leader.add(leader_tablet[0])
             for filename in value:
                 fields = filename.split("/")
                 generation = 1
                 table = fields[-4].split("-")[1]
                 tablet = fields[-3].split("-")[1].split(".")[0]
+                if not tablet in tablet_from_leader:
+                    continue
                 file = fields[-1]
                 dict_key =(tablet + "/" + file)
                 if not current_manifest.storage_tablet_ids:
@@ -2382,7 +2390,7 @@ class YBBackup:
         files = self.get_filelist(tablet_leaders, snapshot_id, snapshot_filepath)
 
         # Build the current manifest
-        (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files)
+        (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files, tablet_leaders)
         if self.args.verbose:
             logging.info("Current manifest {}:  ".format(
                 curr_manifest))
