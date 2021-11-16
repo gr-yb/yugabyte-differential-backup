@@ -2614,7 +2614,7 @@ class YBBackup:
             # Update the current manifest with the previous information files
             for key in files_in_both:
                 final_manifest[key] = prev_manifest[key]
-                if self.args.restore_points < prev_manifest[key]["generation"]:
+                if self.args.restore_points <= prev_manifest[key]["generation"]:
                     final_manifest[key]["action"] = ACTION_MOVE
                     final_manifest[key]["generation"] = 1
                 else:
