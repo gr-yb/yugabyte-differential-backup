@@ -87,6 +87,8 @@ CREATE_METAFILES_MAX_RETRIES = 10
 CLOUD_CFG_FILE_NAME = 'cloud_cfg'
 CLOUD_CMD_MAX_RETRIES = 10
 
+NET_ADDR_FILTER_VAL = 'ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all'
+
 MANIFEST_JSON = "MANIFEST_JSON"
 MANIFEST = 'MANIFEST'
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
@@ -1186,6 +1188,11 @@ class YBBackup:
         :return: the standard output of yb-admin
         """
 
+        cmd_line_args += [
+            '--undefok', 'net_address_filter',
+            '--net_address_filter', NET_ADDR_FILTER_VAL
+        ]
+
         # Specify cert file in case TLS is enabled.
         cert_flag = []
         if self.args.certs_dir:
@@ -1215,7 +1222,8 @@ class YBBackup:
                             'FLAGS_certs_dir': self.args.certs_dir,
                             'FLAGS_use_node_to_node_encryption': 'true',
                             'FLAGS_use_node_hostname_for_local_tserver': 'true',
-                        }
+                            'FLAGS_net_address_filter': NET_ADDR_FILTER_VAL
+            }
 
         run_at_ip = None
         if self.is_k8s():
