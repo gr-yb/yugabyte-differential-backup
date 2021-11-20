@@ -731,49 +731,6 @@ class YBBackup:
         self.manifest_class = Manifest(uuid.uuid1())
         self.manifest_class_last_savepoint = ''
 
-        #self.manifest_class = Manifest(uuid.uuid1())
-
-    def get_files(self, tablet_leaders, snapshot_id, snapshot_filepath):
-
-        '''
-           hack to just load 1 file and 1 dir from the tserver
-            #add vars for input to get_files
-            absolute_snapshot_path the snapshot path on the server as abolute
-            server_ip the ip address of the tserver
-        #need to fic ssh_cmd to accept var for path in
-        #need loop to add all the files
-        :return: retuern a dict of the all the key value pairs of absolute path/file to ip address of server
-        '''
-        return 0
-        server_ip = '10.0.0.241'
-        absolute_snapshot_path = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/012a3afd-ad46-483d-bcbd-21fb9cbb588b'
-        #files = self.run_ssh_cmd("ls /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76/tablet-e1e7528d2dc749aea506d4a40c2ea85c.snapshots/e6e13ee9-0551-4ce1-881a-1343e0990300/*.sst", server_ip).strip().split()
-        #find "`pwd`" -iname '*.sst'
-        files = self.run_ssh_cmd('find /mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76 -name *.sst', server_ip).strip().split()
-        data_dir = '/mnt/d0/yb-data/tserver/data/rocksdb/table-b2e81a8531584f77863a404551693f76'
-        table_id = 'b2e81a8531584f77863a404551693f76'
-        tserver_ip = '10.0.0.241'
-        output = self.run_ssh_cmd(
-            ['find', data_dir,
-             '-mindepth', TABLET_DIR_DEPTH,
-             '-maxdepth', TABLET_DIR_DEPTH,
-             '-name', TABLET_MASK,
-             '-and',
-             '-wholename', TABLET_DIR_GLOB.format(table_id)],
-            tserver_ip)
-        if self.args.verbose:
-            logging.info( '\nGet_files output {}\nType of files {}\n'.format(
-                files,  type(files)))
-        #iterate over the list and add all values as key value pair in manifest.dict.
-        for file_name in files:
-            local_fils_dict = {file_name: server_ip}
-            self.manifest_class.backup_local_dir_files.update(local_fils_dict)
-
-        #local_fils_dict = {files[0]: server_ip}
-        #self.manifest_class.backup_local_dir_files.update(local_fils_dict)
-        #print(self.manifest_class.json_out())
-        return output
-
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
             logging.info("Sleep {}... ({} retries left)".format(timeout, num_retry))
@@ -1719,7 +1676,6 @@ class YBBackup:
 
         return find_snapshot_file_results
 
-
     def find_snapshot_directories(self, data_dir, snapshot_id, tserver_ip):
         """
         Find snapshot directories under the given data directory for the given snapshot id on the
@@ -1920,7 +1876,7 @@ class YBBackup:
 
 
     def prepare_download_command_file(self, parallel_commands, snapshot_filepath, tablet_id,
-                                 tserver_ip, snapshot_dir, snapshot_metadata,diff_tablet,dif_tablet_file):
+                                 tserver_ip, snapshot_dir, snapshot_metadata, diff_tablet, dif_tablet_file):
         """
         Prepares the command to download the backup files to the tservers.
 
@@ -2665,19 +2621,7 @@ class YBBackup:
             '[app] Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
 
-        # upload manifest
-
         self.write_manifest()
-        # with open(manifestfile, 'w') as fp:
-        #      json.dump(self.manifest_class.to_json_dict(), fp)
-        # json.dump(self.manifest_class.to_json_dict(), fp)
-        # print(self.manifest_class.storage_tablet_ids, file=fp)
-
-        # manifest_json = manifestfile + "_json"
-        # with open(manifest_json , 'w') as fp:
-        #     json.dump(self.manifest_class.to_json_dict(), fp)
-
-
         manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
         manifest_source = self.args.backup_location
         manifest_dest = os.path.join(manifest_source, MANIFEST)
@@ -2779,8 +2723,8 @@ class YBBackup:
           sql_dump_path = None
         src_manifest_dump_path = os.path.join(self.args.backup_location, MANIFEST)
         manifest_dump_path = os.path.join(self.get_tmp_dir(), MANIFEST)
-        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path,manifest_dump_path,False)
-        return (metadata_path, sql_dump_path,manifest_dump_path)
+        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path, manifest_dump_path, False)
+        return (metadata_path, sql_dump_path, manifest_dump_path)
 
     def import_ysql_dump(self, dump_file_path):
         """
