@@ -1608,7 +1608,6 @@ class YBBackup:
         :param tserver_ip: tablet server IP or host name
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
-        #ourstuff where have func like this find_snapshot_files() running the find command with extra attributes with list
         #files plus directories need find command like one below..
         #look in manifest of last save point and then compare to current
         output = self.run_ssh_cmd(
@@ -1618,10 +1617,6 @@ class YBBackup:
              '-name', "*", '-and',
              '-wholename', DIFF_SNAPSHOT_DIR_GLOB + snapshot_id + "*"],
             tserver_ip)
-        #self.manifest_class.backup_local_dirs.update(str(tserver_ip,output))
-        # print('output',output)
-        #print('manifest json',self.manifest_class.json_out())
-        # print('absolute-path-snapshot',[line.strip() for line in output.split("\n") if line.strip()])
         return [line.strip() for line in output.split("\n") if line.strip()]
 
     def get_filelist(self, tablet_leaders, snapshot_id, snapshot_filepath):
@@ -1841,8 +1836,6 @@ class YBBackup:
             # 2. Upload check-sum file.
             parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
 
-        # if has_manifest():
-        # if self.is_differential_backup:
         if not 'DIRECTORY' in self.manifest_class.storage_tablet_ids[tablet_id].keys():
            if self.args.verbose:
                 logging.info("\n\nUploading files\n\n")
@@ -1942,7 +1935,7 @@ class YBBackup:
 
 
     def prepare_download_command(self, parallel_commands, snapshot_filepath, tablet_id,
-                                 tserver_ip, snapshot_dir, snapshot_metadata,example_manifest):
+                                 tserver_ip, snapshot_dir, snapshot_metadata, restore_mode_file):
         """
         Prepares the command to download the backup files to the tservers.
 
@@ -1958,11 +1951,6 @@ class YBBackup:
         old_tablet_id = snapshot_metadata['tablet'][tablet_id]
         source_filepath = os.path.join(snapshot_filepath, 'tablet-%s/' % (old_tablet_id))
         snapshot_dir_tmp = strip_dir(snapshot_dir) + '.tmp/'
-        logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath,
-                     self.args.storage_type, snapshot_dir_tmp, tserver_ip))
-
-        # Download the data to a tmp directory and then move it in place.
-        cmd = self.storage.download_dir_cmd(source_filepath, snapshot_dir_tmp)
 
         source_checksum_filepath = checksum_path(
             os.path.join(snapshot_filepath, 'tablet-%s' % (old_tablet_id)))
@@ -1983,8 +1971,22 @@ class YBBackup:
         parallel_commands.add_args(tuple(rmcmd), tserver_ip)
         # 2. Create temporary snapshot dir.
         parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
-        # 3. Download tablet folder.
-        parallel_commands.add_args(tuple(cmd), tserver_ip)
+        if restore_mode_file:
+            logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath, self.args.storage_type, 
+                snapshot_dir_tmp, tserver_ip))
+            for file in self.prev_manifest_class.storage_tablet_ids[old_tablet_id]:
+                target_filename = os.path.join(snapshot_dir_tmp, file)
+                download_file_cmd = self.storage.download_file_cmd(self.prev_manifest_class.storage_tablet_ids[old_tablet_id][file]['src_location'], 
+                    target_filename)
+                parallel_commands.add_args(tuple(download_file_cmd), tserver_ip)
+        else:
+            logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath,
+                     self.args.storage_type, snapshot_dir_tmp, tserver_ip))
+            # Download the data to a tmp directory and then move it in place.
+            cmd = self.storage.download_dir_cmd(source_filepath, snapshot_dir_tmp)
+            # 3. Download tablet folder.
+            parallel_commands.add_args(tuple(cmd), tserver_ip)
+       
         if not self.args.disable_checksums:
             # 4. Download check-sum file.
             parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
@@ -1998,7 +2000,7 @@ class YBBackup:
 
     def prepare_cloud_ssh_cmds(
             self, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
-            snapshot_id, tablets_by_tserver_ip, upload, snapshot_metadata):
+            snapshot_id, tablets_by_tserver_ip, upload, snapshot_metadata, restore_mode_file=False):
         """
         Prepares cloud_command-over-ssh command lines for uploading the snapshot.
 
@@ -2043,10 +2045,9 @@ class YBBackup:
                                 parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
                                 snapshot_dir)
                         else:
-                            example_manifest = ''
                             self.prepare_download_command(
                                 parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                                snapshot_dir, snapshot_metadata)
+                                snapshot_dir, snapshot_metadata, restore_mode_file)
 
                         tablet_ids_with_data_dirs.add(tablet_id)
                         tablet_id_to_snapshot_dirs.pop(tablet_id)
@@ -2067,7 +2068,7 @@ class YBBackup:
                         tservers_processed += [tserver_ip]
 
     def prepare_cloud_ssh_cmds_files(
-            self, diff_tablet_file_list,diff_tablet_dict,parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
+            self, diff_tablet_file_list, diff_tablet_dict, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
             snapshot_id, tablets_by_tserver_ip, upload, snapshot_metadata):
         """
         Prepares cloud_command-over-ssh command lines for uploading the snapshot.
@@ -2091,11 +2092,14 @@ class YBBackup:
         tservers_processed = []
         manifest_tserver_keys = diff_tablet_dict.keys()
         manifest_tserver_keys_list = list(manifest_tserver_keys)
+        print(manifest_tserver_keys_list)
         current_tserver = manifest_tserver_keys_list.pop()
         manifest_tserver_tablet_keys_list = list(diff_tablet_dict[current_tserver].keys())
+        print(manifest_tserver_tablet_keys_list)
         while len(tserver_ip_to_tablet_id_to_snapshot_dirs) > len(tservers_processed):
 
           for tserver_ip in list(tserver_ip_to_tablet_id_to_snapshot_dirs):
+                print(manifest_tserver_tablet_keys_list)
                 current_tserver_tablet = manifest_tserver_tablet_keys_list.pop()
                 manifest_current_tablet = diff_tablet_dict[current_tserver][current_tserver_tablet]
 
@@ -2395,9 +2399,9 @@ class YBBackup:
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
 
-    def try_download_metadata(self, src, dest, raise_exception):
+    def try_download_metadata(self, src, dest, raise_exception, run_local=False):
         try:
-            self.download_file(src, dest)
+            self.download_file(src, dest, run_local=run_local)
         except subprocess.CalledProcessError as ex:
             if raise_exception:
                 raise ex
@@ -2405,7 +2409,7 @@ class YBBackup:
                 logging.info("Ignoring the exception in downloading of {}: {}".
                              format(src, ex))
                 dest = None
-        return (dest)
+        return dest
 
     def create_manifest(self, current_manifest, files, tablet_leaders):
         compare_set_curr = set()
@@ -2441,6 +2445,7 @@ class YBBackup:
         with open(dest_path, 'r') as fp:
             json_dict = json.load(fp)
         self.prev_manifest_class.storage_tablet_ids = json_dict['manifest']['storage']['tablet_ids']
+        return json_dict
 
     def write_manifest(self):
         manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
@@ -2531,7 +2536,7 @@ class YBBackup:
             copy_set_prev = set()
 
             prev_manifest = dict()
-            self.get_manifest(dest_path)
+            json_dict = self.get_manifest(dest_path)
 
             # self.prev_manifest_class.storage_tablet_ids =  json_dict['manifest']['storage']['tablet_ids']
             for tablet in self.prev_manifest_class.storage_tablet_ids:
@@ -2676,19 +2681,6 @@ class YBBackup:
         logging.info(
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
-    def try_download_metadata(self, src, dest, raise_exception, run_local=False):
-        try:
-            self.download_file(src, dest, run_local=run_local)
-        except subprocess.CalledProcessError as ex:
-            if raise_exception:
-                raise ex
-            else:
-                logging.info("Ignoring the exception in downloading of {}: {}".
-                             format(src, ex))
-                dest = None
-        return (dest)
-
-
     def download_metadata_file(self, run_local=False):
         #
         """
@@ -2703,27 +2695,15 @@ class YBBackup:
         src_metadata_path = os.path.join(self.args.backup_location, METADATA_FILE_NAME)
         metadata_path = os.path.join(self.get_tmp_dir(), METADATA_FILE_NAME)
         self.download_file(src_metadata_path, metadata_path)
-        src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
-        sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
-
         if self.is_ysql_keyspace():
-          try:
-              self.download_file(src_sql_dump_path, sql_dump_path)
-          except subprocess.CalledProcessError as ex:
-              if self.is_ysql_keyspace():
-                  raise ex
-              else:
-                  # Possibly this is YCQL backup (no way to determite it exactly at this point).
-                  # Try to ignore YSQL dump - YSQL table restoring will fail a bit later
-                  # on 'import_snapshot' step.
-                  logging.info("Ignoring the exception in downloading of {}: {}".
-                               format(src_sql_dump_path, ex))
-                  sql_dump_path = None
+           src_sql_dump_path = os.path.join(self.args.backup_location, SQL_DUMP_FILE_NAME)
+           sql_dump_path = os.path.join(self.get_tmp_dir(), SQL_DUMP_FILE_NAME)
+           sql_dump_path = self.try_download_metadata(src_sql_dump_path, sql_dump_path, self.is_ysql_keyspace())
         else:
-          sql_dump_path = None
+           sql_dump_path = None
         src_manifest_dump_path = os.path.join(self.args.backup_location, MANIFEST)
         manifest_dump_path = os.path.join(self.get_tmp_dir(), MANIFEST)
-        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path, manifest_dump_path, False)
+        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path, manifest_dump_path, False, run_local=True)
         return (metadata_path, sql_dump_path, manifest_dump_path)
 
     def import_ysql_dump(self, dump_file_path):
@@ -2846,7 +2826,7 @@ class YBBackup:
         return (tablets_by_tserver_union, tablets_by_tserver_delta)
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
-                                      snapshot_id, table_ids):
+                                      snapshot_id, table_ids, restore_mode_file):
         pool = ThreadPool(self.args.parallelism)
 
         self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
@@ -2870,7 +2850,7 @@ class YBBackup:
         self.prepare_cloud_ssh_cmds(
             parallel_downloads, tserver_to_tablet_to_snapshot_dirs, self.args.backup_location,
             snapshot_id, tablets_by_tserver_to_download, upload=False,
-            snapshot_metadata=snapshot_meta)
+            snapshot_metadata=snapshot_meta, restore_mode_file=restore_mode_file)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
@@ -2958,98 +2938,20 @@ class YBBackup:
 
         return tserver_to_deleted_tablets
 
-    def diff_get_manifest(self,old_manifest_dir):
-      ''' gets a JSON file MANIFEST from the source location.
-      file is JSON converts to DICT
-      return diff_manifest_dict and diff_manifest_json and has_manifest boolean'''
-      curr_manifest_dict = ''
-      curr_manifest_json = ''
-      has_manifest = False
-
-      try:  # get the differential manifest for the restore the MANIFEST is a JSON file
-        # example for dev and testing is a dict not a json assume processing already took place
-        #curr_diff_manifest = self.ex_tserver_tablets
-        # example code as this manifest does not currently work
-        head, sep, tail = str(self.args.masters).partition(',')
-        first_master = head
-        old_manifest_str = os.popen(
-          'ssh -i ' + self.args.ssh_key_path + ' -ostricthostkeychecking=no -p 54422 centos@' + first_master + ' ' + 'cat ' + old_manifest_dir + "|sed 's/\final-json.*/.com/' ").read()
-        old_manifest_str = old_manifest_str.replace('\n', '').rstrip()
-        head, sep, tail = old_manifest_str.partition('final-json')
-        curr_manifest_json = head
-        try:
-          curr_manifest_dict = json.loads(head)
-
-        except:
-          traceback.print_exc()
-          error_message = traceback.format_exc()
-          logging.info('Error converting old manifest to dict' + error_message)
-
-        logging.info('Loaded old manifest ' + old_manifest_str)
-        has_manifest = True
-      except:
-        has_manifest = False
-
-      return (curr_manifest_dict,curr_manifest_json,has_manifest)
-
-    def diff_map_new_node_tabletId_to_backup_tabletid(self,new_tablets_by_tserver,diff_tserver_tablets):
-      '''maps the new tabletid uuid to the old tabletid in the backup snapshot
-      map the source tablet location to the new tabletid snapshot location on the tserver
-      need to load all tablets for node in prepare_commnds'''
-      new_tablets_list = []
-      tmp_dict = {}
-      tmp_new_tablets_by_tserver = dict(new_tablets_by_tserver)
-
-      for key in tmp_new_tablets_by_tserver.items():
-        tmp_dict = key
-        tuple1 = tmp_dict[1]
-        for y in tuple1:
-          new_tablets_list.append(tuple1.get(y).pop())
-
-      new_tserver_tablets = diff_tserver_tablets.copy()
-      counter = 0
-      for key, item in diff_tserver_tablets.items():
-        for tabletid, value in item.items():
-          counter = counter + 1
-          if len(new_tablets_list) > 0:
-            tablet = new_tablets_list.pop(0)
-            internal_marks = {'snapshotid': tablet}
-          x = tabletid.split("-", 2)
-
-          newkey = x[1]
-          for list_item in value:
-            list_item.update(internal_marks)
-
-      return(new_tserver_tablets)
-
     def diff_project_tablets_from_manifest(self, src_location_dict, tserver_ip):
       if tserver_ip == '':
         tserver_ip = self.args.masters
 
-      print('tablet-id-',
-            src_location_dict['manifest']['storage']['tablet_ids'].keys())
-
       restore_tserver_tablets = {}
       list_files = []
       for id in src_location_dict['manifest']['storage']['tablet_ids'].keys():
-        print('1', src_location_dict['manifest']['storage']['tablet_ids'][id])
         for src in src_location_dict['manifest']['storage']['tablet_ids'][id]:
-          src_file_info = src_location_dict['manifest']['storage']['tablet_ids'][id][
-            src]
-          print(src_location_dict['manifest']['storage']['tablet_ids'][id][src])
+          src_file_info = src_location_dict['manifest']['storage']['tablet_ids'][id][src]
           list_files.append(src_file_info)
-          print('2', src_location_dict['manifest']['storage']['tablet_ids'][id][src])
-          print(src_location_dict['manifest']['storage']['tablet_ids'][id][src][
-                  'filename'],
-                src_location_dict['manifest']['storage']['tablet_ids'][id][src][
-                  'src_location'])
-        # restore_tserver_tablets = {tserver_ip: {'tablet-' + id: list_files}}
         next_tablet = {'tablet-' + id: list_files}
         restore_tserver_tablets.update(next_tablet)
 
-      tserver_tablets = {self.args.masters: restore_tserver_tablets}
-      print(list_files)
-      print(restore_tserver_tablets)
+      tserver_tablets = {tserver_ip: restore_tserver_tablets}
 
       return (tserver_tablets)
 
@@ -3069,8 +2971,7 @@ class YBBackup:
 
         logging.info('Restoring backup from {}'.format(self.args.backup_location))
 
-        #old(metadata_file_path, dump_file_path) = self.download_metadata_file()
-        (metadata_file_path, dump_file_path,manifest_dump_path) = self.download_metadata_file()
+        (metadata_file_path, dump_file_path, manifest_dump_path) = self.download_metadata_file()
 
         if dump_file_path:
             self.timer.log_new_phase("Create tables via YSQLDump")
@@ -3090,26 +2991,19 @@ class YBBackup:
         self.timer.log_new_phase("Generate list of tservers for every tablet")
         all_tablets_by_tserver = self.find_tablet_replicas(snapshot_metadata)
         tablets_by_tserver_to_download = all_tablets_by_tserver
+        print(tablets_by_tserver_to_download)
 
         #if diff Manifest setup for diff restore and structure for while loop
+        restore_mode_file = False
         if manifest_dump_path:
-          '''
-          expect the location in the manifest to be of format tablet-id/sst_filename
-          '''
           restore_mode_file = True
-          restore_manifest_location = os.path.join(manifest_dump_path, 'MANIFEST')
-          old_manifest_dir = str(self.get_tmp_dir() + '/MANIFEST')
-          (diff_curr_manifest_dict, diff_curr_manifest_json, has_manifest) = self.diff_get_manifest(old_manifest_dir)
-          diff_curr_manifest_dict = self.diff_project_tablets_from_manifest(diff_curr_manifest_dict, self.args.masters)
+          diff_curr_manifest_dict = self.get_manifest(manifest_dump_path)
+          # diff_curr_manifest_dict = self.diff_project_tablets_from_manifest(diff_curr_manifest_dict, ",".join(tablets_by_tserver_to_download.keys()))
 
-          # 3 loading the manifest here hack for demo need to abstracted for any cloud
-#          has_manifest = False  # else false for tracing only false
 
         # The loop must stop after a few rounds because the downloading list includes only new
         # tablets for downloading. The downloading list should become smaller with every round
         # and must become empty in the end.
-
-        #temp manifest sturcture post processing
 
         while tablets_by_tserver_to_download:
             logging.info(
@@ -3118,15 +3012,9 @@ class YBBackup:
             if self.args.verbose:
                 logging.info('Downloading list: {}'.format(tablets_by_tserver_to_download))
 
-            if restore_mode_file:
-              logging.info(
-                'Diff Restore Downloading tablets Files onto %d tservers...' % (len(tablets_by_tserver_to_download)))
-              tserver_to_deleted_tablets = self.download_snapshot_directory_files(
-                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids,diff_curr_manifest_dict)
-            else:
-              # Download tablets and get list of deleted tablets.
-              tserver_to_deleted_tablets = self.download_snapshot_directories(
-                  snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids)
+            # Download tablets and get list of deleted tablets.
+            tserver_to_deleted_tablets = self.download_snapshot_directories(
+                snapshot_metadata, tablets_by_tserver_to_download, snapshot_id, table_ids, restore_mode_file)
 
             # Remove deleted tablets from the list of all tablets.
             for tserver_ip in tserver_to_deleted_tablets:
