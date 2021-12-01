@@ -1,1 +1,1 @@
-A repository of preliminary designs for Yugabyte database features, enhancements, or fixes
+A repository of for the Yugabyte differential backup and restore database feature
