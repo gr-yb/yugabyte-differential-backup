@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 #
 # Copyright 2021 YugaByte, Inc. and Contributors
-#
+
 # Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
 # may not use this file except in compliance with the License. You
 # may obtain a copy of the License at
@@ -10,6 +10,7 @@
 
 from __future__ import print_function
 
+import configparser
 import argparse
 import ast
 import atexit
@@ -50,9 +51,9 @@ RPC_BIND_ADDRESSES_ARG_PREFIX = RPC_BIND_ADDRESSES_ARG_NAME + '='
 
 # For differential backup, action to take with each file
 # NOOP = no operation.
-ACTION_COPY = 1
-ACTION_MOVE = 2
-ACTION_NOOP = 3
+ACTION_COPY = "COPY"
+ACTION_MOVE = "MOVE"
+ACTION_NOOP = "NOOP"
 
 IMPORTED_TABLE_RE = re.compile(r'(?:Colocated t|T)able being imported: ([^\.]*)\.(.*)')
 RESTORATION_RE = re.compile('^Restoration id: (' + UUID_RE_STR + r')\b')
@@ -115,7 +116,8 @@ class Manifest():
         self.manifest_universe_name = ""
         self.manifest_universe_id = ""
         self.manifest_create_date = ''
-        self.manifest_status = ""
+        self.manifest_location = ""
+        self.manifest_previous = ""
         self.database_name = ""
         self.database_type = ""
         self.database_tables = dict()
@@ -156,7 +158,8 @@ class Manifest():
             "manifest_universe_name": self.manifest_universe_name,
             "manifest_universe_id": self.manifest_universe_id,
             "manifest_create_date": self.manifest_create_date,
-            "manifest_status": self.manifest_status,
+            "manifest_location": self.manifest_location,
+            "manifest_previous": self.manifest_previous,
             },
             "database": {
             "name": self.database_name, "type": self.database_type, "database_tables": str(self.database_tables),"database_objects": str(self.database_objects)
@@ -774,6 +777,7 @@ class YBBackup:
                 self.sleep_or_raise(num_retry, timeout, ex)
 
     def parse_arguments(self):
+
         parser = argparse.ArgumentParser(
             description='Backup/restore YB table',
             epilog="Use the following environment variables to provide AWS access and secret "
@@ -797,9 +801,10 @@ class YBBackup:
                    " only supports ycql as script processes the whole DB",
             formatter_class=RawDescriptionHelpFormatter)
 
+
         parser.add_argument(
             '--masters', required=True,
-            help="Comma separated list of masters for the cluster")
+                help="Comma separated list of masters for the cluster")
         parser.add_argument(
             '--k8s_config', required=False,
             help="Namespace to use for kubectl in case of kubernetes deployment")
@@ -893,8 +898,8 @@ class YBBackup:
             default=S3BackupStorage.storage_type(),
             help="Storage backing for backups, eg: s3, nfs, gcs, ..")
         parser.add_argument(
-            'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'],
-            help='Create, restore or delete the backup from the provided backup location.')
+        'command', choices=['create', 'restore', 'restore_keys', 'delete', 'create_diff'],
+        help='Create, restore or delete the backup from the provided backup location.')
         parser.add_argument(
             '--certs_dir', required=False,
             help="The directory containing the certs for secure connections.")
@@ -925,6 +930,8 @@ class YBBackup:
             help='The type of location of last differential backup savepoint. Allowed: s3 ')
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
+
+
 
     def post_process_arguments(self):
         if self.args.verbose:
@@ -1632,9 +1639,6 @@ class YBBackup:
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
-
-        if self.args.verbose:
-            logging.info('Tablets_by_leader_ip {} {}'.format(type(tablets_by_leader_ip), tablets_by_leader_ip))
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
         if self.args.verbose:
@@ -2441,16 +2445,27 @@ class YBBackup:
                     copy_set_curr.add(dict_key)
         return (curr_manifest, compare_set_curr, copy_set_curr)
 
-    def get_manifest(self, dest_path):
-        with open(dest_path, 'r') as fp:
-            json_dict = json.load(fp)
-        self.prev_manifest_class.storage_tablet_ids = json_dict['manifest']['storage']['tablet_ids']
-        return json_dict
+    def get_manifest(self, dest_path, manifest_file, manifest):
+        try:
+            self.download_file(manifest_file, dest_path, run_local=True)
+            with open(dest_path, 'r') as fp:
+                json_dict = json.load(fp)
+            manifest.storage_tablet_ids = json_dict['manifest']['storage']['tablet_ids']
+            if 'manifest_previous' in json_dict['manifest']['metadata']:
+                manifest.manifest_previous = json_dict['manifest']['metadata']['manifest_previous']
+            else:
+                manifest.manifest_previous = ''
+            result = True
 
-    def write_manifest(self):
-        manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
-        with open(manifestfile, 'w') as fp:
-            json.dump(self.manifest_class.to_json_dict(), fp)
+        except:
+             result =  False
+             logging.info("Previous manifest not found, proceeding with full backup")
+#
+        return result
+
+    def write_manifest(self, manifest_file, manifest_class):
+        with open(manifest_file, 'w') as fp:
+            json.dump(manifest_class.to_json_dict(), fp)
 
     def backup_table(self):
         """
@@ -2506,6 +2521,7 @@ class YBBackup:
 
         # Build the current manifest
         (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files, tablet_leaders)
+        self.manifest_class.manifest_location = self.args.backup_location
         if self.args.verbose:
             logging.info("Current manifest {}:  ".format(
                 curr_manifest))
@@ -2513,31 +2529,45 @@ class YBBackup:
         self.timer.log_new_phase("Get the previous manifest for differential backup")
         previous_manifest_source = self.args.prev_manifest_source
 
-        if previous_manifest_source and self.is_differential_backup():
+        is_differential_backup = self.is_differential_backup()
+        if previous_manifest_source and is_differential_backup:
             prev_manifestfile = os.path.join(previous_manifest_source, MANIFEST)
             dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
-            try:
-                self.download_file(prev_manifestfile, dest_path, run_local=True)
-                self.is_differential_backup = True
-            except:
-                self.is_differential_backup = False
-                logging.info("Previous manifest not found, proceeding with full backup")
-        else:
-            self.is_differential_backup = False
-            logging.info("Previous manifest source defined but command is not \"create_diff\", proceeding with full backup.")
+            if self.get_manifest(dest_path, prev_manifestfile, self.prev_manifest_class):
+                is_differential_backup = True
+                self.manifest_class.manifest_previous = previous_manifest_source
+            else:
+                is_differential_backup = False
+                logging.info("Previous manifest " + dest_path + "  not found or could not be loaded, proceeding with full backup.")
 
         for key in tablet_leaders:
             self.manifest_class.storage_tablet_ids.setdefault(key[0], {})
 
         final_manifest = dict()
-        if self.is_differential_backup:
+        write_previous_manifests = False
+        if is_differential_backup:
             self.timer.log_new_phase("Run differential backup")
             compare_set_prev = set()
             copy_set_prev = set()
 
-            prev_manifest = dict()
-            json_dict = self.get_manifest(dest_path)
+            restore_point_manifests = dict()
+            restore_point_manifests[0] = Manifest(uuid.uuid1())
+            restore_point_manifests[0] = copy.deepcopy(self.prev_manifest_class)
+            restore_point_manifests[0].manifest_location = previous_manifest_source
+            # load number of restore points previous_manifests
+            for num_manifests in range(1, self.args.restore_points):
+                restore_point_manifests[num_manifests] = Manifest(uuid.uuid1())
+                manifest_location = restore_point_manifests[num_manifests-1].manifest_previous
+                prev_manifestfile = os.path.join(manifest_location, MANIFEST)
+                # dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
+                if self.get_manifest(dest_path, prev_manifestfile, restore_point_manifests[num_manifests]):
+                    restore_point_manifests[num_manifests].manifest_location = manifest_location
+                    continue
 
+            if self.args.verbose:
+                logging.info("\nNumber of previous manifests: %s restore points %s" %(num_manifests + 1,  self.args.restore_points))
+
+            prev_manifest = dict()
             # self.prev_manifest_class.storage_tablet_ids =  json_dict['manifest']['storage']['tablet_ids']
             for tablet in self.prev_manifest_class.storage_tablet_ids:
                 for file in self.prev_manifest_class.storage_tablet_ids[tablet]:
@@ -2584,8 +2614,20 @@ class YBBackup:
             for key in files_in_both:
                 final_manifest[key] = prev_manifest[key]
                 if self.args.restore_points <= prev_manifest[key]["generation"]:
+                    write_previous_manifests = True
+                    tablet = key.split("/")[0]
+                    file = key.split("/")[1]
                     final_manifest[key]["action"] = ACTION_MOVE
                     final_manifest[key]["generation"] = 1
+                    # reset generation and location for restore_point manifests
+                    for num_manifest in restore_point_manifests.keys():
+                        # if (tablet in restore_point_manifests[num_manifest].storage_tablet_ids.) and (file in restore_point_manifests[num_manifest]):
+                        if (restore_point_manifests[num_manifest].storage_tablet_ids.get(tablet)) and (restore_point_manifests[num_manifest].storage_tablet_ids[tablet].get(file)):
+                            restore_point_manifests[num_manifest].storage_tablet_ids[tablet][file]['generation'] = num_manifests
+                            restore_point_manifests[num_manifest].storage_tablet_ids[tablet][file]['src_location'] = \
+                                self.args.backup_location
+                                # final_manifest[key]
+                                # self.manifest_class.storage_tablet_ids[tablet][file]['src_location']
                 else:
                     final_manifest[key]["action"] = ACTION_NOOP
                     final_manifest[key]["generation"] = prev_manifest[key]["generation"] + 1
@@ -2605,7 +2647,9 @@ class YBBackup:
                 for tablet in self.manifest_class.storage_tablet_ids:
                     self.manifest_class.storage_tablet_ids[tablet]['DIRECTORY'] = {}
 
+
             self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
+
 
         else:
             self.timer.log_new_phase("Run full backup")
@@ -2626,11 +2670,24 @@ class YBBackup:
             '[app] Backed up tables %s to %s successfully!' %
             (self.table_names_str(), snapshot_filepath))
 
-        self.write_manifest()
+        if write_previous_manifests:
+            manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
+            # self.write_manifest(manifestfile, self.prev_manifest_class)
+            # manifest_source = self.prev_manifest_class.manifest_location
+            # manifest_dest = os.path.join(manifest_source, MANIFEST)
+            # self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
+            for index in restore_point_manifests.keys():
+                self.write_manifest(manifestfile, restore_point_manifests[index])
+                manifest_source = restore_point_manifests[index].manifest_location
+                manifest_dest = os.path.join(manifest_source, MANIFEST)
+                self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
+
+        # manifest_source = self.args.backup_location
         manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
-        manifest_source = self.args.backup_location
-        manifest_dest = os.path.join(manifest_source, MANIFEST)
+        manifest_dest = os.path.join(self.manifest_class.manifest_location, MANIFEST)
+        self.write_manifest(manifestfile, self.manifest_class)
         self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
+
 
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
