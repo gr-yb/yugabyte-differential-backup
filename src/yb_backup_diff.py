@@ -34,6 +34,9 @@ from multiprocessing.pool import ThreadPool
 import os
 import re
 import boto3
+# INTERNAL_CONFIG = True if os.environ.get("INTERNAL_CONFIG") else False
+# INTERNAL_CONFIG = True
+INTERNAL_CONFIG = False
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -730,6 +733,7 @@ class YBBackup:
         self.timer = BackupTimer()
         self.parse_arguments()
 
+        self.run_local=False
         self.prev_manifest_class = Manifest(uuid.uuid1())
         self.manifest_class = Manifest(uuid.uuid1())
         self.manifest_class_last_savepoint = ''
@@ -801,9 +805,8 @@ class YBBackup:
                    " only supports ycql as script processes the whole DB",
             formatter_class=RawDescriptionHelpFormatter)
 
-
         parser.add_argument(
-            '--masters', required=True,
+            '--masters', required= True if not INTERNAL_CONFIG else False,
                 help="Comma separated list of masters for the cluster")
         parser.add_argument(
             '--k8s_config', required=False,
@@ -863,7 +866,7 @@ class YBBackup:
             help="Whether checksums will be created and checked. If specified, will skip using "
                  "checksums.")
 
-        backup_location_group = parser.add_mutually_exclusive_group(required=True)
+        backup_location_group = parser.add_mutually_exclusive_group(required= True if not INTERNAL_CONFIG else False)
         backup_location_group.add_argument(
             '--backup_location',
             help="Directory/bucket under which the snapshots should be created or "
@@ -930,6 +933,28 @@ class YBBackup:
             help='The type of location of last differential backup savepoint. Allowed: s3 ')
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
         self.args = parser.parse_args()
+
+        if INTERNAL_CONFIG:
+            self.args.masters = "ip1, ip2, ip3"
+            self.args.parallelism=  8
+            self.args.keyspace = ["keyspace_name"]
+            self.args.table = ["table_name"]
+            self.args.ssh_port = "ssh_port"
+            self.args.ssh_key_path = "path/to/ssh/keys"
+            self.args.no_auto_name = True
+            self.args.verbose = True
+            self.args.no_snapshot_deleting = True
+            self.args.storage_type = "s3"
+            # self.args.mac = False
+            self.args.mac = True
+            self.args.restore_points = 2
+            self.args.disable_checksum = False
+            self.args.backup_location = "s3://location"
+            self.args.snapshot_id = "snapshot id"
+
+            self.args.prev_manifest_source = "s3://manifest_location"
+            # self.args.command = "create"
+            self.args.command = "create_diff"
 
 
 
@@ -1792,7 +1817,9 @@ class YBBackup:
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
     def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        prefix = pipes.quote(SHA_TOOL_PATH) if not self.args.mac else '/usr/bin/shasum'
+        prefix = pipes.quote(SHA_TOOL_PATH) if not (self.args.mac and self.run_local) else '/usr/bin/shasum'
+        # if self.run_local and not os.path.exists(prefix):
+            # prefix = pipes.quote('/usr/bin/shasum')
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
     def create_checksum_cmd(self, file_path, checksum_file_path):
@@ -2208,6 +2235,7 @@ class YBBackup:
         :param src_path: local metadata file path
         :param dest_path: destination metadata file path
         """
+        self.run_local = run_local
         src_checksum_path = checksum_path(src_path)
         dest_checksum_path = checksum_path(dest_path)
 
@@ -2218,8 +2246,8 @@ class YBBackup:
 
             if not self.args.disable_checksums:
                 logging.info('Creating check-sum for %s' % (src_path))
-                self.run_program(
-                    self.create_checksum_cmd(src_path, src_checksum_path))
+                self.run_program([ 'bash','-c',
+                    self.create_checksum_cmd(src_path, src_checksum_path)])
 
                 logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
                 self.run_program(
@@ -2362,6 +2390,7 @@ class YBBackup:
         """
         Download the file from the external source to the local temporary folder.
         """
+        self.run_local = run_local
         if self.args.local_yb_admin_binary or run_local:
             if not self.args.disable_checksums:
                 checksum_downloaded = checksum_path_downloaded(target_path)
@@ -2371,8 +2400,8 @@ class YBBackup:
                 self.storage.download_file_cmd(src_path, target_path))
 
             if not self.args.disable_checksums:
-                self.run_program(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
+                self.run_program([ 'bash','-c',
+                    self.create_checksum_cmd(target_path, checksum_path(target_path))])
                 check_checksum_res = self.run_program(
                     compare_checksums_cmd(checksum_downloaded,
                                           checksum_path(target_path))).strip()
@@ -2404,6 +2433,7 @@ class YBBackup:
 
 
     def try_download_metadata(self, src, dest, raise_exception, run_local=False):
+        self.run_local = run_local
         try:
             self.download_file(src, dest, run_local=run_local)
         except subprocess.CalledProcessError as ex:
@@ -2447,6 +2477,8 @@ class YBBackup:
 
     def get_manifest(self, dest_path, manifest_file, manifest):
         try:
+            prev_disable_checksums = self.args.disable_checksums
+            self.args.disable_checksums = True
             self.download_file(manifest_file, dest_path, run_local=True)
             with open(dest_path, 'r') as fp:
                 json_dict = json.load(fp)
@@ -2456,10 +2488,11 @@ class YBBackup:
             else:
                 manifest.manifest_previous = ''
             result = True
-
         except:
              result =  False
-             logging.info("Previous manifest not found, proceeding with full backup")
+             logging.info("Failed to get manifest {}".format( manifest_file))
+        finally:
+            self.args.disable_checksums = prev_disable_checksums
 #
         return result
 
@@ -2665,6 +2698,7 @@ class YBBackup:
             self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
 
         self.timer.log_new_phase("Upload snapshot directories")
+        self.run_local=False
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             '[app] Backed up tables %s to %s successfully!' %
@@ -2697,6 +2731,7 @@ class YBBackup:
         """
         Download the file from the external source to the local temporary folder.
         """
+        self.run_local = run_local
         if self.args.local_yb_admin_binary or run_local:
             if not self.args.disable_checksums:
                 checksum_downloaded = checksum_path_downloaded(target_path)
@@ -2706,11 +2741,11 @@ class YBBackup:
                 self.storage.download_file_cmd(src_path, target_path))
 
             if not self.args.disable_checksums:
-                self.run_program(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)))
-                check_checksum_res = self.run_program(
-                    compare_checksums_cmd(checksum_downloaded,
-                                          checksum_path(target_path))).strip()
+                self.run_program([ 'bash','-c',
+                    self.create_checksum_cmd(target_path, checksum_path(target_path))])
+                check_checksum_res = self.run_program(['bash', '-c',
+                                      compare_checksums_cmd(checksum_downloaded,
+                                          checksum_path(target_path))]).strip()
         else:
             server_ip = self.get_main_host_ip()
 
@@ -2744,6 +2779,7 @@ class YBBackup:
         Download the metadata file for a backup so as to perform a restore based on it.
         """
 
+        self.run_local = run_local
         if self.args.local_yb_admin_binary or run_local:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
