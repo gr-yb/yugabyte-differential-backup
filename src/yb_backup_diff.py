@@ -33,7 +33,6 @@ from multiprocessing.pool import ThreadPool
 
 import os
 import re
-import boto3
 # INTERNAL_CONFIG = True if os.environ.get("INTERNAL_CONFIG") else False
 # INTERNAL_CONFIG = True
 INTERNAL_CONFIG = False
@@ -196,6 +195,14 @@ class Manifest():
         json_dict = self.to_json_dict()
         json_object = json.dumps(json_dict, indent=4)
         return json_object
+
+    def update_storage_tablet_ids(self, manifest_dict):
+        self.storage_tablet_ids = manifest_dict['manifest']['storage']['tablet_ids']
+        if 'manifest_previous' in manifest_dict['manifest']['metadata']:
+            self.manifest_previous = manifest_dict['manifest']['metadata']['manifest_previous']
+        else:
+            self.manifest_previous = ''
+
 
 class App(dict):
     def __str__(self):
@@ -722,6 +729,35 @@ def get_instance_profile_credentials():
 
     return result
 
+def read_aws_credentials_from_file(credentials_file):
+    d = {}
+    with open(credentials_file, 'r') as fp:
+        for line in fp:
+            tokens = line.split('=')
+            if len(tokens) > 1:
+                key = tokens[0].strip()
+                if key == 'aws_access_key_id':
+                    d['access_key'] = tokens[1].strip()
+                elif key == 'aws_secret_access_key':
+                    d['secret_key'] = tokens[1].strip()
+                elif key == 'aws_session_token':
+                    d['access_token'] = tokens[1].strip()
+            if len(d) == 3:
+                return d
+    return d
+
+def write_s3_config_file(path, **kvs):
+    def write_kv(f, k, v):
+        f.write(k)
+        f.write(' = ')
+        f.write(v if v else '')
+        f.write('\n')
+    with open(path, 'w') as fp:
+        fp.write('[default]\n')
+        for k, v in kvs.items():
+            write_kv(fp, k, v)
+
+
 class YBBackup:
     def __init__(self):
         self.leader_master_ip = ''
@@ -931,7 +967,10 @@ class YBBackup:
         parser.add_argument(
             '--savepoint_number',required=False,
             help='The type of location of last differential backup savepoint. Allowed: s3 ')
-        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s: %(message)s")
+        parser.add_argument(
+            '--aws_credentials_file', required=False,
+            help='Path to aws credentials file.')
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(lineno)d: %(message)s")
         self.args = parser.parse_args()
 
         if INTERNAL_CONFIG:
@@ -983,19 +1022,18 @@ class YBBackup:
         options = BackupOptions(self.args)
         self.cloud_cfg_file_path = os.path.join(self.get_tmp_dir(), CLOUD_CFG_FILE_NAME)
         if self.is_s3():
-            if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
+            if self.args.aws_credentials_file:
+                creds = read_aws_credentials_from_file(self.args.aws_credentials_file)
+                if not creds.get('access_key') or not creds.get('secret_key') or not creds.get('access_token'):
+                    raise BackupException("Missing required credentials in {}, found: {}".format(self.args.aws_credentials_file, creds))
+                write_s3_config_file(self.cloud_cfg_file_path, **creds)
+            elif not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
                 metadata = get_instance_profile_credentials()
-                with open(self.cloud_cfg_file_path, 'w') as s3_cfg:
-                    if metadata:
-                        s3_cfg.write('[default]\n' +
-                                     'access_key = ' + metadata[0] + '\n' +
-                                     'secret_key = ' + metadata[1] + '\n' +
-                                     'access_token = ' + metadata[2] + '\n')
-                    else:
-                        s3_cfg.write('[default]\n' +
-                                     'access_key = ' + '\n' +
-                                     'secret_key = ' + '\n' +
-                                     'access_token = ' + '\n')
+                creds = {}
+                creds['access_key'] = metadata[0] if metadata else ''
+                creds['secret_key'] = metadata[1] if metadata else ''
+                creds['access_token'] = metadata[2] if metadata else ''
+                write_s3_config_file(self.cloud_cfg_file_path, **creds)
             elif os.getenv('AWS_SECRET_ACCESS_KEY') and os.getenv('AWS_ACCESS_KEY_ID'):
                 host_base = os.getenv('AWS_HOST_BASE')
                 if host_base:
@@ -1008,6 +1046,8 @@ class YBBackup:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
                                  'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n' +
+                                 'access_token = ' + os.getenv('AWS_ACCESS_TOKEN') + '\n' +
+
                                  host_base_cfg)
             else:
                 raise BackupException(
@@ -1518,7 +1558,6 @@ class YBBackup:
                 ("Did not find any data directories in tablet server config at '{}' on server "
                  "'{}'. Was looking for '{}', got this: [[ {} ]]").format(
                     TSERVER_CONF_PATH, tserver_ip, FS_DATA_DIRS_ARG_PREFIX, grep_output))
-        return data_dirs
 
     def find_local_data_dirs(self, tserver_ip):
         ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
@@ -2457,10 +2496,13 @@ class YBBackup:
                 if leader_tablet[1] == tserver:
                     tablet_from_leader.add(leader_tablet[0])
             for filename in value:
+                if filename.endswith("/intents") or "/intents/" in filename:
+                    continue
                 fields = filename.split("/")
                 generation = 1
                 table = fields[-4].split("-")[1]
                 tablet = fields[-3].split("-")[1].split(".")[0]
+                # todo(zdrudi): this comparison is brittle. find a better way to do this.
                 if not tablet in tablet_from_leader:
                     continue
                 file = fields[-1]
@@ -2490,11 +2532,15 @@ class YBBackup:
             result = True
         except:
              result =  False
-             logging.info("Failed to get manifest {}".format( manifest_file))
+             logging.info("Failed to get manifest {}".format(manifest_file))
         finally:
             self.args.disable_checksums = prev_disable_checksums
-#
         return result
+
+    def update_manifest_from_local_file(self, manifest_file, manifest):
+        with open(manifest_file, 'r') as fp:
+            manifest_dict = json.load(fp)
+            manifest.update_storage_tablet_ids(manifest_dict)
 
     def write_manifest(self, manifest_file, manifest_class):
         with open(manifest_file, 'w') as fp:
@@ -3090,9 +3136,7 @@ class YBBackup:
         restore_mode_file = False
         if manifest_dump_path:
           restore_mode_file = True
-          diff_curr_manifest_dict = self.get_manifest(manifest_dump_path)
-          # diff_curr_manifest_dict = self.diff_project_tablets_from_manifest(diff_curr_manifest_dict, ",".join(tablets_by_tserver_to_download.keys()))
-
+          self.update_manifest_from_local_file(manifest_dump_path, self.prev_manifest_class)
 
         # The loop must stop after a few rounds because the downloading list includes only new
         # tablets for downloading. The downloading list should become smaller with every round
