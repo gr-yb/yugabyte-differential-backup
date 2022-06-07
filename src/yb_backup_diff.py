@@ -763,7 +763,7 @@ def write_s3_config_file(path, **kvs):
 
 
 class YBBackup:
-    def __init__(self):
+    def __init__(self, args):
         self.leader_master_ip = ''
         self.ysql_ip = ''
         self.live_tserver_ip = ''
@@ -772,12 +772,13 @@ class YBBackup:
         self.k8s_namespace_to_cfg = {}
         self.timer = BackupTimer()
         self.tserver_ip_to_web_port = {}
-        self.parse_arguments()
+        self.args = args
 
         self.run_local=False
         self.prev_manifest_class = Manifest(uuid.uuid1())
         self.manifest_class = Manifest(uuid.uuid1())
         self.manifest_class_last_savepoint = ''
+
 
     def sleep_or_raise(self, num_retry, timeout, ex):
         if num_retry > 0:
@@ -821,8 +822,9 @@ class YBBackup:
                 logging.error("Failed to run command [[ {} ]]: {}".format(cmd_as_str, ex))
                 self.sleep_or_raise(num_retry, timeout, ex)
 
-    def parse_arguments(self):
 
+    @staticmethod
+    def create(args_list=None):
         parser = argparse.ArgumentParser(
             description='Backup/restore YB table',
             epilog="Use the following environment variables to provide AWS access and secret "
@@ -978,31 +980,8 @@ class YBBackup:
         parser.add_argument(
             '--aws_credentials_file', required=False,
             help='Path to aws credentials file.')
-        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(lineno)d: %(message)s")
-        self.args = parser.parse_args()
-
-        if INTERNAL_CONFIG:
-            self.args.masters = "ip1, ip2, ip3"
-            self.args.parallelism=  8
-            self.args.keyspace = ["keyspace_name"]
-            self.args.table = ["table_name"]
-            self.args.ssh_port = "ssh_port"
-            self.args.ssh_key_path = "path/to/ssh/keys"
-            self.args.no_auto_name = True
-            self.args.verbose = True
-            self.args.no_snapshot_deleting = True
-            self.args.storage_type = "s3"
-            # self.args.mac = False
-            self.args.mac = True
-            self.args.restore_points = 2
-            self.args.disable_checksum = False
-            self.args.backup_location = "s3://location"
-            self.args.snapshot_id = "snapshot id"
-
-            self.args.prev_manifest_source = "s3://manifest_location"
-            # self.args.command = "create"
-            self.args.command = "create_diff"
-
+        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s")
+        return YBBackup(parser.parse_args(args_list))
 
 
     def post_process_arguments(self):
@@ -3287,4 +3266,4 @@ class YBBackup:
 
 
 if __name__ == "__main__":
-    YBBackup().run()
+    YBBackup.create().run()

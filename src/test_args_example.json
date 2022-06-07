@@ -1,0 +1,41 @@
+{
+  "general": {
+    "switches": [
+      "no_auto_name",
+      "disable_checksums",
+      "verbose"
+    ],
+    "key_values": {
+      "masters": "host1:port1,host2:port2",
+      "parallelism": 3,
+      "ysql_port": 5433,
+      "ssh_port": 22,
+      "ssh_key_path": "/path/to/private/key/for/sshing/into/server",
+      "ssh_user": "user_to_ssh_into_server_as",
+      "remote_user": "user_to_change_into_perform_running_commands",
+      "remote_yb_admin_binary": "/path/to/ybadmin/on/server",
+      "remote_ysql_dump_binary": "/path/to/ysql_dump/on/server",
+      "remote_ysql_shell_binary": "/path/to/ysqlsh/on/server",
+      "aws_credentials_file": "/path/to/aws/credentials/file",
+      "storage_type": "s3"
+    }
+  },
+  "create": {
+    "switches": [
+      "no_snapshot_deleting"
+    ],
+    "key_values": {
+      "restore_points": 4
+    }
+  },
+  "restore": {
+    "switches": [],
+    "key_values": {}
+  },
+  "test_harness": {
+      "backup_location_base": "s3://prefix/to/use/for/test/objects",
+      "db_user": "user_for_sql_queries_performed_in_test",
+      "db_host": "host_for_sql_queries_performed_in_test",
+      "db_port": 5433
+  }
+}
