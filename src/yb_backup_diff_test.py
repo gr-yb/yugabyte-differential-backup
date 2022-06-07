@@ -182,50 +182,53 @@ class BackupRunner:
         backup_args.append(command)
         return backup_args
 
+    def get_yb_backup(self, location_suffix, keyspace, command, command_args, extra_kvs=None):
+        full_location_path = os.path.join(self.args['test_harness']['backup_location_base'], location_suffix)
+        internal_extra_kvs = {}
+        if extra_kvs:
+            internal_extra_kvs.update(extra_kvs)
+        internal_extra_kvs["backup_location"] = full_location_path
+        internal_extra_kvs["keyspace"] = keyspace
+        backup_args = self.get_args_list(self.args['general'],
+                                         command_args,
+                                         command,
+                                         extra_kvs=internal_extra_kvs)
+        return yb_backup_diff.YBBackup.create(backup_args)
+
     async def asyncify(self, f):
         loop = asyncio.get_running_loop()
         return await loop.run_in_executor(None, f)
 
 
     async def run_create(self, location_suffix, keyspace):
-        full_location_path = os.path.join(self.args['test_harness']['backup_location_base'], location_suffix)
-        backup_args = self.get_args_list(self.args['general'],
-                                         self.args['create'],
-                                         'create',
-                                         extra_kvs={"backup_location": full_location_path,
-                                                    "keyspace": keyspace})
-        ybb = yb_backup_diff.YBBackup.create(backup_args)
+        ybb = self.get_yb_backup(location_suffix, keyspace, 'create', self.args['create'])
         return await self.asyncify(ybb.run)
 
 
     async def run_restore(self, location_suffix, keyspace):
-        full_location_path = os.path.join(self.args['test_harness']['backup_location_base'], location_suffix)
-        backup_args = self.get_args_list(self.args['general'],
-                                         self.args['restore'],
-                                         'restore',
-                                         extra_kvs={"backup_location": full_location_path,
-                                                    "keyspace": keyspace})
-        ybb = yb_backup_diff.YBBackup.create(backup_args)
+        ybb = self.get_yb_backup(location_suffix, keyspace, 'restore', self.args['restore'])
         return await self.asyncify(ybb.run)
 
 
     async def run_create_diff(self, location_suffix, keyspace, previous_location_suffix):
         base_backup_location = self.args['test_harness']['backup_location_base']
-        backup_args = self.get_args_list(self.args['general'],
-                                         self.args['create'],
-                                         'create_diff',
-                                         extra_kvs={"backup_location": os.path.join(base_backup_location, location_suffix),
-                                                    "keyspace": keyspace,
-                                                    "prev_manifest_source": os.path.join(base_backup_location,
-                                                                                         previous_location_suffix)})
-        ybb = yb_backup_diff.YBBackup.create(backup_args)
+        previous_location_full = os.path.join(base_backup_location, previous_location_suffix)
+        ybb = self.get_yb_backup(location_suffix,
+                                 keyspace,
+                                 'create_diff',
+                                 self.args['create'],
+                                 extra_kvs={"prev_manifest_source": previous_location_full})
         return await self.asyncify(ybb.run)
 
 
 if __name__ == '__main__':
     import sys
+    import logging
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--args_file', required=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s",
+                        filename="test_run.log")
 
     test_harness_args, leftover_args = parser.parse_known_args()
 

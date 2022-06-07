@@ -71,7 +71,6 @@ ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
 SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/*'
 DIFF_SNAPSHOT_DIR_GLOB = '*' + ROCKSDB_PATH_PREFIX + '/table-*/tablet-*.snapshots/'
-SNAPSHOT_DIR_DEPTH = 7
 SNAPSHOT_DIR_SUFFIX_RE = re.compile(
     '^.*/tablet-({})[.]snapshots/({})$'.format(UUID_RE_STR, UUID_RE_STR))
 
@@ -980,7 +979,6 @@ class YBBackup:
         parser.add_argument(
             '--aws_credentials_file', required=False,
             help='Path to aws credentials file.')
-        logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s")
         return YBBackup(parser.parse_args(args_list))
 
 
@@ -1679,7 +1677,7 @@ class YBBackup:
              '-mindepth', SNAPSHOT_FILES_DIR_MIN_DEPTH,
              '-maxdepth', SNAPSHOT_FILES_DIR_MAX_DEPTH,
              '-name', "*", '-and',
-             '-wholename', DIFF_SNAPSHOT_DIR_GLOB + snapshot_id + "*"],
+             '-wholename', DIFF_SNAPSHOT_DIR_GLOB + snapshot_id + "*", '-type', 'f'],
             tserver_ip)
         return [line.strip() for line in output.split("\n") if line.strip()]
 
@@ -2620,7 +2618,6 @@ class YBBackup:
         if is_differential_backup:
             self.timer.log_new_phase("Run differential backup")
             compare_set_prev = set()
-            copy_set_prev = set()
 
             restore_point_manifests = dict()
             restore_point_manifests[0] = Manifest(uuid.uuid1())
@@ -2649,17 +2646,15 @@ class YBBackup:
                 logging.info('\nPrevious manifest\n{}'.format(prev_manifest))
 
             # Create the set of files to copy and compare from the previous backup
-            for key in  prev_manifest.keys():
+            for key in prev_manifest.keys():
                 if prev_manifest[key]["filename"].find(".sst") != -1:
                     compare_set_prev.add(key)
-                else:
-                    copy_set_prev.add(key)
 
             files_in_both = compare_set_curr & compare_set_prev
-            files_in_prev = compare_set_prev - compare_set_curr
             files_in_curr = compare_set_curr - compare_set_prev
 
             if self.args.verbose:
+                files_in_prev = compare_set_prev - compare_set_curr
                 logging.info(
                    "\n\n\nSets: \nfiles_in_both_backups {}\nfiles_in_prev {}\nfiles_in_curr {}\n\n\n".format(
                         files_in_both, files_in_prev, files_in_curr  ))
@@ -2760,7 +2755,6 @@ class YBBackup:
         manifest_dest = os.path.join(self.manifest_class.manifest_location, MANIFEST)
         self.write_manifest(manifestfile, self.manifest_class)
         self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
-
 
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
@@ -3266,4 +3260,5 @@ class YBBackup:
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s")
     YBBackup.create().run()

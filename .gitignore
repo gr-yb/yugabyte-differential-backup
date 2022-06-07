@@ -2,3 +2,4 @@
 *.py[ocd]
 venv/
 python_virtual_env/
+*.log
