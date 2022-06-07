@@ -2487,8 +2487,6 @@ class YBBackup:
                 if leader_tablet[1] == tserver:
                     tablet_from_leader.add(leader_tablet[0])
             for filename in value:
-                if filename.endswith("/intents") or "/intents/" in filename:
-                    continue
                 fields = filename.split("/")
                 generation = 1
                 table = fields[-4].split("-")[1]
