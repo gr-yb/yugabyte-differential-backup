@@ -10,15 +10,12 @@
 
 from __future__ import print_function
 
-import configparser
 import argparse
-import ast
 import atexit
 import copy
 import logging
 import pipes
 import random
-import shutil
 import string
 import subprocess
 import traceback
@@ -28,7 +25,7 @@ import uuid
 
 from argparse import RawDescriptionHelpFormatter
 from boto.utils import get_instance_metadata
-from datetime import timedelta, date
+from datetime import timedelta
 from multiprocessing.pool import ThreadPool
 
 import os
@@ -491,22 +488,6 @@ def verify_colocated_table_ids(old_id, new_id):
 
 def keyspace_name(keyspace):
     return keyspace.split('.')[1] if ('.' in keyspace) else keyspace
-
-def nested_dict_pairs_iterator(dict_obj):
-    ''' This function accepts a nested dictionary as argument
-        and iterate over all values of nested dictionaries
-    '''
-    # Iterate over all key-value pairs of dict argument
-    for key, value in dict_obj.items():
-        # Check if value is of dict type
-        if isinstance(value, dict):
-            # If value is dict then iterate over all its values
-            for pair in nested_dict_pairs_iterator(value):
-                yield (key, *pair)
-        else:
-            # If value is not dict type then yield the value
-            yield (key, value)
-    print(pair)
 
 class BackupOptions:
     def __init__(self, args):
@@ -1123,8 +1104,8 @@ class YBBackup:
             output = self.run_yb_admin(['list_all_masters'])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (uuid, ip_port, state, role) = split_by_tab(line)
-                    (ip, port) = ip_port.split(':')
+                    _, ip_port, state, role = split_by_tab(line)
+                    ip, _ = ip_port.split(':')
                     if state == 'ALIVE':
                         alive_master_ip = ip
                     if role == 'LEADER':
@@ -1141,7 +1122,7 @@ class YBBackup:
                     fields = split_by_space(line)
                     ip_port = fields[1]
                     state = fields[3]
-                    (ip, port) = ip_port.split(':')
+                    ip, _ = ip_port.split(':')
                     if state == 'ALIVE':
                         self.live_tserver_ip = ip
                         break
@@ -1175,7 +1156,7 @@ class YBBackup:
 
         return self.ysql_ip
 
-    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args, run_ip=None, env_vars={}):
+    def run_tool(self, local_tool, remote_tool, std_args, cmd_line_args, run_ip=None, env_vars=None):
         """
         Runs the utility from the configured location.
         :param cmd_line_args: command-line arguments to the tool
@@ -1396,7 +1377,7 @@ class YBBackup:
                     fields = split_by_tab(line)
                     tablet_id = fields[0]
                     tablet_leader_host_port = fields[2]
-                    (ts_host, ts_port) = tablet_leader_host_port.split(":")
+                    ts_host, _ = tablet_leader_host_port.split(":")
                     tablet_leaders.append((tablet_id, ts_host))
         return tablet_leaders
 
@@ -1460,7 +1441,7 @@ class YBBackup:
                 logging.info("Uploading {} to server {} done: {}".format(
                     self.cloud_cfg_file_path, server_ip, output))
 
-    def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3, env_vars={}):
+    def run_ssh_cmd(self, cmd, server_ip, upload_cloud_cfg=True, num_ssh_retry=3, env_vars=None):
         """
         Runs the given command on the given remote server over SSH.
         :param cmd: either a string, or a list of arguments. In the latter case, each argument
@@ -1482,7 +1463,7 @@ class YBBackup:
 
         num_retries = CLOUD_CMD_MAX_RETRIES if self.is_cloud() else num_ssh_retry
 
-        if env_vars:
+        if env_vars is not None:
             # Add env vars to the front of the cmd shell-style like "FOO=bar ls -l"
             bash_env_args = " ".join(["{}={}".format(env_name, pipes.quote(env_val)) for
                                      (env_name, env_val) in env_vars.items()])
@@ -1681,7 +1662,7 @@ class YBBackup:
             tserver_ip)
         return [line.strip() for line in output.split("\n") if line.strip()]
 
-    def get_filelist(self, tablet_leaders, snapshot_id, snapshot_filepath):
+    def get_filelist(self, tablet_leaders, snapshot_id):
         """
          Uploads snapshot directories from all tablet servers hosting our table to subdirectories
          of the given target backup directory.
@@ -1811,7 +1792,7 @@ class YBBackup:
         """
         tserver_ip_to_tablet_id_to_snapshot_dirs = {}
         for key in find_snapshot_dir_results:
-            (data_dir, snapshot_id_unused, tserver_ip) = key
+            _, snapshot_id_unused, tserver_ip = key
             snapshot_dirs = find_snapshot_dir_results[key]
             assert snapshot_id_unused == snapshot_id
             tablet_id_to_snapshot_dirs =\
@@ -1898,25 +1879,25 @@ class YBBackup:
             parallel_commands.add_args(tuple(upload_checksum_cmd), tserver_ip)
 
         if not 'DIRECTORY' in self.manifest_class.storage_tablet_ids[tablet_id].keys():
-           if self.args.verbose:
+            if self.args.verbose:
                 logging.info("\n\nUploading files\n\n")
         # **********************************
         # Actions: move or copy or ignore
         # 1 - copy  2 - move 3 - noop.
         # **********************************
-           for file in self.manifest_class.storage_tablet_ids[tablet_id]:
-              target_filename = os.path.join(target_filepath, file)
-              if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_NOOP:
-                 pass
-              else:
-                 if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_COPY:
-                    upload_file_cmd = self.storage.upload_file_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
+            for file in self.manifest_class.storage_tablet_ids[tablet_id]:
+                target_filename = os.path.join(target_filepath, file)
+                if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_NOOP:
+                    pass
+                else:
+                    if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_COPY:
+                        upload_file_cmd = self.storage.upload_file_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
+                        parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
+                    else:
+                        if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_MOVE:
+                            upload_file_cmd = self.storage.move_obj_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
                     parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
-                 else:
-                     if self.manifest_class.storage_tablet_ids[tablet_id][file]["action"] == ACTION_MOVE:
-                         upload_file_cmd = self.storage.move_obj_cmd(self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"], target_filepath)
-                 parallel_commands.add_args(tuple(upload_file_cmd), tserver_ip)
-                 self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"] = copy.deepcopy(target_filename)
+                    self.manifest_class.storage_tablet_ids[tablet_id][file]["src_location"] = copy.deepcopy(target_filename)
         else:
             # 3. Upload tablet folder.
             if self.args.verbose:
@@ -1930,7 +1911,7 @@ class YBBackup:
 
 
     def prepare_download_command_file(self, parallel_commands, snapshot_filepath, tablet_id,
-                                 tserver_ip, snapshot_dir, snapshot_metadata, diff_tablet, dif_tablet_file):
+                                 tserver_ip, snapshot_dir, snapshot_metadata, diff_tablet):
         """
         Prepares the command to download the backup files to the tservers.
 
@@ -1978,10 +1959,10 @@ class YBBackup:
 
         #loop on tablet src files and add each file to parallel_commands
         for value in diff_tablet:
-          src = value['src_location']
-          dest = snapshot_dir_tmp
-          cmd = self.storage.download_file_cmd(src, dest)
-          parallel_commands.add_args(tuple(cmd), tserver_ip)
+            src = value['src_location']
+            dest = snapshot_dir_tmp
+            cmd = self.storage.download_file_cmd(src, dest)
+            parallel_commands.add_args(tuple(cmd), tserver_ip)
 
         if not self.args.disable_checksums:
             # 4. Download check-sum file.
@@ -2129,7 +2110,7 @@ class YBBackup:
                         tservers_processed += [tserver_ip]
 
     def prepare_cloud_ssh_cmds_files(
-            self, diff_tablet_file_list, diff_tablet_dict, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
+            self, diff_tablet_dict, parallel_commands, tserver_ip_to_tablet_id_to_snapshot_dirs, snapshot_filepath,
             snapshot_id, tablets_by_tserver_ip, upload, snapshot_metadata):
         """
         Prepares cloud_command-over-ssh command lines for uploading the snapshot.
@@ -2192,7 +2173,7 @@ class YBBackup:
 
                           self.prepare_download_command_file(
                                 parallel_commands, snapshot_filepath, tablet_id, tserver_ip,
-                                snapshot_dir, snapshot_metadata,manifest_current_tablet,diff_tablet_file_list)
+                                snapshot_dir, snapshot_metadata,manifest_current_tablet)
 
                         tablet_ids_with_data_dirs.add(tablet_id)
                         tablet_id_to_snapshot_dirs.pop(tablet_id)
@@ -2489,7 +2470,6 @@ class YBBackup:
             for filename in value:
                 fields = filename.split("/")
                 generation = 1
-                table = fields[-4].split("-")[1]
                 tablet = fields[-3].split("-")[1].split(".")[0]
                 # todo(zdrudi): this comparison is brittle. find a better way to do this.
                 if not tablet in tablet_from_leader:
@@ -2507,9 +2487,9 @@ class YBBackup:
         return (curr_manifest, compare_set_curr, copy_set_curr)
 
     def get_manifest(self, dest_path, manifest_file, manifest):
+        prev_disable_checksums = self.args.disable_checksums
+        self.args.disable_checksums = True
         try:
-            prev_disable_checksums = self.args.disable_checksums
-            self.args.disable_checksums = True
             self.download_file(manifest_file, dest_path, run_local=True)
             with open(dest_path, 'r') as fp:
                 json_dict = json.load(fp)
@@ -2585,7 +2565,7 @@ class YBBackup:
 
         self.timer.log_new_phase("Get snapshot files and create manifest")
         # Get a list of all the files to be differentially backed up
-        files = self.get_filelist(tablet_leaders, snapshot_id, snapshot_filepath)
+        files = self.get_filelist(tablet_leaders, snapshot_id)
 
         # Build the current manifest
         (curr_manifest, compare_set_curr, copy_set_curr) = self.create_manifest(self.manifest_class, files, tablet_leaders)
@@ -2877,7 +2857,7 @@ class YBBackup:
         snapshot_metadata['table'] = {}
         snapshot_metadata['tablet'] = {}
         snapshot_metadata['snapshot_id'] = {}
-        for idx, line in enumerate(output.splitlines()):
+        for _, line in enumerate(output.splitlines()):
             table_match = IMPORTED_TABLE_RE.search(line)
             if table_match:
                 snapshot_metadata['keyspace_name'].append(table_match.group(1))
@@ -2922,8 +2902,8 @@ class YBBackup:
             output = self.run_yb_admin(['list_tablet_servers', new_id])
             for line in output.splitlines():
                 if LEADING_UUID_RE.match(line):
-                    (ts_uuid, ts_ip_port, role) = split_by_tab(line)
-                    (ts_ip, ts_port) = ts_ip_port.split(':')
+                    _, ts_ip_port, _ = split_by_tab(line)
+                    ts_ip, _ = ts_ip_port.split(':')
                     tablets_by_tserver_ip.setdefault(ts_ip, set()).add(new_id)
 
         return tablets_by_tserver_ip
@@ -3003,7 +2983,6 @@ class YBBackup:
                 data_dir_by_tserver, snapshot_id, tablets_by_tserver_to_download, table_ids)
         #add the snapshot absolute path
         new_tablets_list = []
-        tmp_dict = {}
         tmp_new_tablets_by_tserver = dict(tserver_to_tablet_to_snapshot_dirs)
         #get a list of all the newly generated snapshot tablet dir's for copy of the
         #source files into for a tablet
@@ -3012,13 +2991,11 @@ class YBBackup:
             new_tablets_list.append(list(value)[0])
         new_tserver_tablets = diff_curr_manifest_dict.copy()
         for key, item in diff_curr_manifest_dict.items():
-          for tabletid, value in item.items():
+          for _, value in item.items():
             #counter = counter + 1
             if len(new_tablets_list) > 0:
               tablet = new_tablets_list.pop(0)
               internal_marks = {'snapshotid': tablet}
-            x = tabletid.split("-", 2)
-            newkey = x[1]
             for list_item in value:
               list_item.update(internal_marks)
         #return (new_tserver_tablets) that contains the snapshot path on the master for each source location tablet
@@ -3029,10 +3006,7 @@ class YBBackup:
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
         self.timer.log_new_phase("Download data")
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
-        restore_commands = []
-        diff_tablets = list(new_tserver_tablets.keys())
         for key in new_tserver_tablets:
-            next_tablet_sst_file = new_tserver_tablets[key]
             tablet_src_desc = []
             for key in new_tserver_tablets:
               tablets = new_tserver_tablets[key]
@@ -3043,13 +3017,13 @@ class YBBackup:
                   tablet_src_desc.append(tuple_src_dest)
             #tablet_src_desc now container list of tuples src, dest for ssh commads
 
-            self.prepare_cloud_ssh_cmds_files(tablet_src_desc,diff_curr_manifest_dict,
-                                                  parallel_downloads,
-                                                  tserver_to_tablet_to_snapshot_dirs,
-                                                  self.args.backup_location,
-                                                  snapshot_id, tablets_by_tserver_to_download,
-                                                  upload=False,
-                                                  snapshot_metadata=snapshot_meta)
+            self.prepare_cloud_ssh_cmds_files(tablet_src_desc,
+                                              parallel_downloads,
+                                              tserver_to_tablet_to_snapshot_dirs,
+                                              self.args.backup_location,
+                                              snapshot_id, tablets_by_tserver_to_download,
+                                              upload=False,
+                                              snapshot_metadata=snapshot_meta)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(pool)
@@ -3068,11 +3042,11 @@ class YBBackup:
 
       restore_tserver_tablets = {}
       list_files = []
-      for id in src_location_dict['manifest']['storage']['tablet_ids'].keys():
-        for src in src_location_dict['manifest']['storage']['tablet_ids'][id]:
-          src_file_info = src_location_dict['manifest']['storage']['tablet_ids'][id][src]
+      for tablet_id in src_location_dict['manifest']['storage']['tablet_ids'].keys():
+        for src in src_location_dict['manifest']['storage']['tablet_ids'][tablet_id]:
+          src_file_info = src_location_dict['manifest']['storage']['tablet_ids'][tablet_id][src]
           list_files.append(src_file_info)
-        next_tablet = {'tablet-' + id: list_files}
+        next_tablet = {'tablet-' + tablet_id: list_files}
         restore_tserver_tablets.update(next_tablet)
 
       tserver_tablets = {tserver_ip: restore_tserver_tablets}

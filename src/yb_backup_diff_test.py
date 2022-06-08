@@ -1,12 +1,12 @@
-import aiopg
 import argparse
 import asyncio
-import concurrent.futures
 import json
 import unittest
 import os.path
 import random
 import string
+
+import aiopg
 
 import yb_backup_diff
 
@@ -112,7 +112,7 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def recreate_table(self, curr):
-        await curr.execute(f"""
+        await curr.execute("""
           DROP TABLE IF EXISTS test_table;
           CREATE TABLE test_table (id int PRIMARY KEY,
                      value varchar);
@@ -152,7 +152,7 @@ class BackupRunner:
 
     @staticmethod
     def initialize_from_file(fpath):
-        with open(fpath, 'r') as fp:
+        with open(fpath, 'r', encoding='utf-8') as fp:
             args = json.load(fp)
             return BackupRunner(args)
 
