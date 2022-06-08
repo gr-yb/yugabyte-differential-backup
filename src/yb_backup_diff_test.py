@@ -86,7 +86,7 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
         await conn.close()
 
         diff_location_suffix = random_suffix("test_diff_backup_diff1_", 10)
-        await self.backup_runner.run_create_diff(diff_location_suffix, source_keyspace, full_location_suffix)
+        await self.backup_runner.run_create_diff(diff_location_suffix, source_keyspace, full_location_suffix, restore_points=4)
         destination_db = db_name + "_restored"
         destination_keyspace = f"ysql.{destination_db}"
         await self.backup_runner.run_restore(diff_location_suffix, destination_keyspace)
@@ -210,14 +210,15 @@ class BackupRunner:
         return await self.asyncify(ybb.run)
 
 
-    async def run_create_diff(self, location_suffix, keyspace, previous_location_suffix):
+    async def run_create_diff(self, location_suffix, keyspace, previous_location_suffix, restore_points):
         base_backup_location = self.args['test_harness']['backup_location_base']
         previous_location_full = os.path.join(base_backup_location, previous_location_suffix)
         ybb = self.get_yb_backup(location_suffix,
                                  keyspace,
                                  'create_diff',
                                  self.args['create'],
-                                 extra_kvs={"prev_manifest_source": previous_location_full})
+                                 extra_kvs={"prev_manifest_source": previous_location_full,
+                                            "restore_points": restore_points})
         return await self.asyncify(ybb.run)
 
 

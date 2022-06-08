@@ -2397,52 +2397,6 @@ class YBBackup:
         return snapshot_id
 
 
-    def download_file(self, src_path, target_path, run_local=False):
-        """
-        Download the file from the external source to the local temporary folder.
-        """
-        self.run_local = run_local
-        if self.args.local_yb_admin_binary or run_local:
-            if not self.args.disable_checksums:
-                checksum_downloaded = checksum_path_downloaded(target_path)
-                self.run_program(
-                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded))
-            self.run_program(
-                self.storage.download_file_cmd(src_path, target_path))
-
-            if not self.args.disable_checksums:
-                self.run_program([ 'bash','-c',
-                    self.create_checksum_cmd(target_path, checksum_path(target_path))])
-                check_checksum_res = self.run_program(
-                    compare_checksums_cmd(checksum_downloaded,
-                                          checksum_path(target_path))).strip()
-        else:
-            server_ip = self.get_leader_master_ip()
-            if not self.args.disable_checksums:
-                checksum_downloaded = checksum_path_downloaded(target_path)
-                self.run_ssh_cmd(
-                    self.storage.download_file_cmd(checksum_path(src_path), checksum_downloaded),
-                    server_ip)
-            self.run_ssh_cmd(
-                self.storage.download_file_cmd(src_path, target_path),
-                server_ip)
-
-            if not self.args.disable_checksums:
-                self.run_ssh_cmd(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
-                    server_ip)
-                check_checksum_res = self.run_ssh_cmd(
-                    compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
-                    server_ip).strip()
-
-        if (not self.args.disable_checksums) and check_checksum_res != 'correct':
-            raise BackupException('Check-sum for {} is {}'.format(
-                target_path, check_checksum_res))
-
-        logging.info(
-            'Downloaded metadata file %s from %s' % (target_path, src_path))
-
-
     def try_download_metadata(self, src, dest, raise_exception, run_local=False):
         self.run_local = run_local
         try:
@@ -2752,7 +2706,7 @@ class YBBackup:
                 self.storage.download_file_cmd(src_path, target_path))
 
             if not self.args.disable_checksums:
-                self.run_program([ 'bash','-c',
+                self.run_program(['bash','-c',
                     self.create_checksum_cmd(target_path, checksum_path(target_path))])
                 check_checksum_res = self.run_program(['bash', '-c',
                                       compare_checksums_cmd(checksum_downloaded,
