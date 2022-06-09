@@ -758,6 +758,7 @@ class YBBackup:
         self.prev_manifest_class = Manifest(uuid.uuid1())
         self.manifest_class = Manifest(uuid.uuid1())
         self.manifest_class_last_savepoint = ''
+        self.pool = None
 
 
     def sleep_or_raise(self, num_retry, timeout, ex):
@@ -969,7 +970,6 @@ class YBBackup:
 
         if self.args.storage_type == 'nfs':
             logging.info('Checking whether NFS backup storage path mounted on TServers or not')
-            pool = ThreadPool(self.args.parallelism)
             tablets_by_leader_ip = []
 
             output = self.run_yb_admin(['list_all_tablet_servers'])
@@ -982,7 +982,7 @@ class YBBackup:
                     if state == 'ALIVE':
                         tablets_by_leader_ip.append(ip)
             tserver_ips = list(tablets_by_leader_ip)
-            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
+            SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(self.pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
@@ -1642,8 +1642,6 @@ class YBBackup:
          :param snapshot_id: self-explanatory
          :param snapshot_filepath: the top-level directory under which to upload the data directories
          """
-        pool = ThreadPool(self.args.parallelism)
-
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
@@ -1651,7 +1649,7 @@ class YBBackup:
         tserver_ips = sorted(tablets_by_leader_ip.keys())
         if self.args.verbose:
             logging.info('Tablets_by_leader_ip {} {}'.format(type(tablets_by_leader_ip), tablets_by_leader_ip))
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(self.pool)
         if self.args.verbose:
             logging.info('\nData_dir_by_tserver\n{}\n{}\n'.format( type(data_dir_by_tserver), data_dir_by_tserver))
 
@@ -1677,7 +1675,7 @@ class YBBackup:
                     else:
                         tservers_processed += [tserver_ip]
 
-        find_snapshot_file_results = parallel_find_files.run(pool)
+        find_snapshot_file_results = parallel_find_files.run(self.pool)
         if self.args.verbose:
             logging.info('Find_snapshot_file_results type {} \n{}'.format(type(find_snapshot_file_results), find_snapshot_file_results))
 
@@ -1709,14 +1707,12 @@ class YBBackup:
         :param snapshot_id: self-explanatory
         :param snapshot_filepath: the top-level directory under which to upload the data directories
         """
-        pool = ThreadPool(self.args.parallelism)
-
         tablets_by_leader_ip = {}
         for (tablet_id, leader_ip) in tablet_leaders:
             tablets_by_leader_ip.setdefault(leader_ip, set()).add(tablet_id)
 
         tserver_ips = sorted(tablets_by_leader_ip.keys())
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(self.pool)
 
         for tserver_ip in tserver_ips:
             data_dir_by_tserver[tserver_ip] = copy.deepcopy(data_dir_by_tserver[tserver_ip])
@@ -1737,7 +1733,7 @@ class YBBackup:
                     else:
                         tservers_processed += [tserver_ip]
 
-        find_snapshot_dir_results = parallel_find_snapshots.run(pool)
+        find_snapshot_dir_results = parallel_find_snapshots.run(self.pool)
 
         leader_ip_to_tablet_id_to_snapshot_dirs = self.rearrange_snapshot_dirs(
             find_snapshot_dir_results, snapshot_id, tablets_by_leader_ip)
@@ -1748,7 +1744,7 @@ class YBBackup:
              snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
-        parallel_uploads.run(pool)
+        parallel_uploads.run(self.pool)
 
     def rearrange_snapshot_dirs(
             self, find_snapshot_dir_results, snapshot_id, tablets_by_tserver_ip):
@@ -2524,7 +2520,6 @@ class YBBackup:
             compare_set_prev = set()
 
             restore_point_manifests = dict()
-            restore_point_manifests[0] = Manifest(uuid.uuid1())
             restore_point_manifests[0] = copy.deepcopy(self.prev_manifest_class)
             restore_point_manifests[0].manifest_location = previous_manifest_source
             # load number of restore points previous_manifests
@@ -2856,11 +2851,10 @@ class YBBackup:
 
     def download_snapshot_directories(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_ids, restore_mode_file):
-        pool = ThreadPool(self.args.parallelism)
 
         self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(self.pool)
 
         if self.args.verbose:
             logging.info('Found data directories: {}'.format(data_dir_by_tserver))
@@ -2882,7 +2876,7 @@ class YBBackup:
             snapshot_metadata=snapshot_meta, restore_mode_file=restore_mode_file)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
-        results = parallel_downloads.run(pool)
+        results = parallel_downloads.run(self.pool)
 
         if not self.args.disable_checksums:
             for k in results:
@@ -2895,11 +2889,10 @@ class YBBackup:
 
     def download_snapshot_directory_files(self, snapshot_meta, tablets_by_tserver_to_download,
                                       snapshot_id, table_ids, diff_curr_manifest_dict):
-        pool = ThreadPool(self.args.parallelism)
 
         self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
-        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+        data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(self.pool)
         if self.args.verbose:
             logging.info('Found data directories: {}'.format(data_dir_by_tserver))
         #generate the new snapshot dir's on the master node
@@ -2951,7 +2944,7 @@ class YBBackup:
                                               snapshot_metadata=snapshot_meta)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
-        results = parallel_downloads.run(pool)
+        results = parallel_downloads.run(self.pool)
 
         if not self.args.disable_checksums:
             for k in results:
@@ -3129,7 +3122,14 @@ class YBBackup:
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
 
+
     def run(self):
+        with ThreadPool(self.args.parallelism) as pool:
+            self.pool = pool
+            self.__run_internal()
+
+
+    def __run_internal(self):
         try:
             self.post_process_arguments()
             if self.args.command == 'restore':

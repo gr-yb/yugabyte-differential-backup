@@ -24,14 +24,15 @@ class PgConnector:
         self.base_database = database if database is not None else "yugabyte"
 
 
-    async def connect(self, database=None):
+    # returns an async context manager.
+    def connect(self, database=None):
         kwargs = {"database": database if database is not None else self.base_database,
                   "user": self.user,
                   "host": self.host,
                   "port": self.port}
         if self.password is not None:
             kwargs['password'] = self.password
-        return await aiopg.connect(**kwargs)
+        return aiopg.connect(**kwargs)
 
 
 BackupTestRun = collections.namedtuple('BackupTestRun', ['db_name', 'keyspace', 'full_location', 'diff_locations'])
@@ -68,21 +69,19 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
 
         db_name = random_suffix(f"{test_name}_", 10)
         await self.recreate_db(db_name)
-        conn = await self.backup_runner.connector.connect(db_name)
-        async with conn.cursor() as curr:
-            await self.recreate_table(curr)
-            await self.write_dict(curr, initial_data)
-        await conn.close()
+        async with self.backup_runner.connector.connect(db_name) as conn:
+            async with conn.cursor() as curr:
+                await self.recreate_table(curr)
+                await self.write_dict(curr, initial_data)
         source_keyspace = f"ysql.{db_name}"
         full_backup_location = f"{db_name}_full"
         await self.backup_runner.run_create(full_backup_location, source_keyspace)
 
         diff_locations = []
         for i, data_dict in enumerate(subsequent_data if subsequent_data else []):
-            conn = await self.backup_runner.connector.connect(db_name)
-            async with conn.cursor() as curr:
-                await self.write_dict(curr, data_dict)
-            await conn.close()
+            async with self.backup_runner.connector.connect(db_name) as conn:
+                async with conn.cursor() as curr:
+                    await self.write_dict(curr, data_dict)
             diff_location = f"{db_name}_diff_{i}"
             await self.backup_runner.run_create_diff(diff_location,
                                                      source_keyspace,
@@ -96,11 +95,10 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def read_data(self, db_name):
-        conn = await self.backup_runner.connector.connect(db_name)
-        data = None
-        async with conn.cursor() as cur:
-            data = await self.read_dict(cur)
-        await conn.close()
+        async with self.backup_runner.connector.connect(db_name) as conn:
+            data = None
+            async with conn.cursor() as cur:
+                data = await self.read_dict(cur)
         return data
 
 
@@ -162,15 +160,14 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
 
 
     async def recreate_db(self, dbname):
-        conn = await self.backup_runner.connector.connect()
-        async with conn.cursor() as curr:
-            await curr.execute(f"""
-            DROP DATABASE IF EXISTS {dbname}
-            """)
-            await curr.execute(f"""
-            CREATE DATABASE {dbname}
-            """)
-        await conn.close()
+        async with await self.backup_runner.connector.connect() as conn:
+            async with conn.cursor() as curr:
+                await curr.execute(f"""
+                DROP DATABASE IF EXISTS {dbname}
+                """)
+                await curr.execute(f"""
+                CREATE DATABASE {dbname}
+                """)
 
 
     async def recreate_table(self, curr):
