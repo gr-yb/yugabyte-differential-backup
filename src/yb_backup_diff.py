@@ -1531,34 +1531,6 @@ class YBBackup:
 
         return data_dirs
 
-    def find_local_data_dirs(self, tserver_ip):
-        ps_output = self.run_ssh_cmd(['ps', '-o', 'command'], tserver_ip)
-        for line in ps_output.split('\n'):
-            args = line.split(' ')
-            if args[0].endswith('yb-tserver'):
-                fs_data_dirs = []
-                ip = None
-                for i in range(1, len(args)):
-                    if args[i].startswith(FS_DATA_DIRS_ARG_PREFIX):
-                        for data_dir in args[i][len(FS_DATA_DIRS_ARG_PREFIX):].split(','):
-                            data_dir = data_dir.strip()
-                            if data_dir:
-                                fs_data_dirs.append(data_dir)
-                    elif args[i].startswith(RPC_BIND_ADDRESSES_ARG_PREFIX):
-                        ip_port = args[i][len(RPC_BIND_ADDRESSES_ARG_PREFIX):]
-                        ip = ip_port.split(':')[0]
-                    elif args[i] == FS_DATA_DIRS_ARG_NAME:
-                        data_dir = args[i + 1].strip()
-                        if data_dir:
-                            fs_data_dirs.append(data_dir)
-                    elif args[i] == RPC_BIND_ADDRESSES_ARG_NAME:
-                        ip = args[i + 1]
-
-                if ip == tserver_ip:
-                    logging.info("Found data directories on server {}: {}".format(ip, fs_data_dirs))
-                    return fs_data_dirs
-        raise BackupException("Unable to find data directories on server {}".format(tserver_ip))
-
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
                                tablets_by_tserver_ip, table_ids):
         """
@@ -2560,7 +2532,6 @@ class YBBackup:
                 restore_point_manifests[num_manifests] = Manifest(uuid.uuid1())
                 manifest_location = restore_point_manifests[num_manifests-1].manifest_previous
                 prev_manifestfile = os.path.join(manifest_location, MANIFEST)
-                # dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
                 if self.get_manifest(dest_path, prev_manifestfile, restore_point_manifests[num_manifests]):
                     restore_point_manifests[num_manifests].manifest_location = manifest_location
                     continue
@@ -2941,7 +2912,7 @@ class YBBackup:
         #get a list of all the newly generated snapshot tablet dir's for copy of the
         #source files into for a tablet
         for key in tmp_new_tablets_by_tserver.items():
-          for key, value in key[1].items():
+          for _, value in key[1].items():
             new_tablets_list.append(list(value)[0])
         new_tserver_tablets = diff_curr_manifest_dict.copy()
         for key, item in diff_curr_manifest_dict.items():
@@ -3137,7 +3108,7 @@ class YBBackup:
         if self.args.verbose:
             logging.info("Removing temporary directory '{}'".format(tmp_dir))
 
-        # self.run_program(['rm', '-rf', tmp_dir])
+        self.run_program(['rm', '-rf', tmp_dir])
 
     def cleanup_remote_temporary_directory(self, server_ip, tmp_dir):
         """
@@ -3147,7 +3118,7 @@ class YBBackup:
             logging.info("Removing remote temporary directory '{}' on {}".format(
                 tmp_dir, server_ip))
 
-        # self.run_ssh_cmd(['rm', '-rf', tmp_dir], server_ip)
+        self.run_ssh_cmd(['rm', '-rf', tmp_dir], server_ip)
 
     def delete_created_snapshot(self, snapshot_id):
         """
