@@ -1,4 +1,3 @@
-import asyncio
 import collections
 import json
 import logging
@@ -8,7 +7,7 @@ import random
 import string
 import unittest
 
-import aiopg
+import psycopg2
 
 import yb_backup_diff
 
@@ -24,7 +23,6 @@ class PgConnector:
         self.base_database = database if database is not None else "yugabyte"
 
 
-    # returns an async context manager.
     def connect(self, database=None):
         kwargs = {"database": database if database is not None else self.base_database,
                   "user": self.user,
@@ -32,13 +30,13 @@ class PgConnector:
                   "port": self.port}
         if self.password is not None:
             kwargs['password'] = self.password
-        return aiopg.connect(**kwargs)
+        return psycopg2.connect(**kwargs)
 
 
 BackupTestRun = collections.namedtuple('BackupTestRun', ['db_name', 'keyspace', 'full_location', 'diff_locations'])
 
 
-class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
+class BackupDiffTest(unittest.TestCase):
     backup_runner = None
     ROWS_PER_BATCH = 10
     ARGS_FILE_PATH = "backup_args.json"
@@ -63,30 +61,30 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
         return batches[0], batches[1:]
 
 
-    async def run_backups(self, test_name, initial_data, subsequent_data=None, restore_points=0):
+    def run_backups(self, test_name, initial_data, subsequent_data=None, restore_points=0):
         if bool(subsequent_data) != bool(restore_points):
             raise ValueError("Both or neither of subsequent_data and restore_points must be defined")
 
         db_name = random_suffix(f"{test_name}_", 10)
-        await self.recreate_db(db_name)
-        async with self.backup_runner.connector.connect(db_name) as conn:
-            async with conn.cursor() as curr:
-                await self.recreate_table(curr)
-                await self.write_dict(curr, initial_data)
+        self.recreate_db(db_name)
+        with self.backup_runner.connector.connect(db_name) as conn:
+            with conn.cursor() as curr:
+                self.recreate_table(curr)
+                self.write_dict(curr, initial_data)
         source_keyspace = f"ysql.{db_name}"
         full_backup_location = f"{db_name}_full"
-        await self.backup_runner.run_create(full_backup_location, source_keyspace)
+        self.backup_runner.run_create(full_backup_location, source_keyspace)
 
         diff_locations = []
         for i, data_dict in enumerate(subsequent_data if subsequent_data else []):
-            async with self.backup_runner.connector.connect(db_name) as conn:
-                async with conn.cursor() as curr:
-                    await self.write_dict(curr, data_dict)
+            with self.backup_runner.connector.connect(db_name) as conn:
+                with conn.cursor() as curr:
+                    self.write_dict(curr, data_dict)
             diff_location = f"{db_name}_diff_{i}"
-            await self.backup_runner.run_create_diff(diff_location,
-                                                     source_keyspace,
-                                                     diff_locations[-1] if diff_locations else full_backup_location,
-                                                     restore_points)
+            self.backup_runner.run_create_diff(diff_location,
+                                               source_keyspace,
+                                               diff_locations[-1] if diff_locations else full_backup_location,
+                                               restore_points)
             diff_locations.append(diff_location)
         return BackupTestRun(db_name=db_name,
                              keyspace=source_keyspace,
@@ -94,103 +92,104 @@ class BackupDiffTest(unittest.IsolatedAsyncioTestCase):
                              diff_locations=diff_locations)
 
 
-    async def read_data(self, db_name):
-        async with self.backup_runner.connector.connect(db_name) as conn:
+    def read_data(self, db_name):
+        with self.backup_runner.connector.connect(db_name) as conn:
             data = None
-            async with conn.cursor() as cur:
-                data = await self.read_dict(cur)
+            with conn.cursor() as cur:
+                data = self.read_dict(cur)
         return data
 
 
-    async def restore_db(self, source_db_name, backup_location):
+    def restore_db(self, source_db_name, backup_location):
         destination_db = f"{source_db_name}_restore"
-        await self.backup_runner.run_restore(backup_location, f"ysql.{destination_db}")
+        self.backup_runner.run_restore(backup_location, f"ysql.{destination_db}")
         return destination_db
 
 
-    async def test_backup(self):
+    def test_backup(self):
         data, _ = self.make_test_data(1)
         print(f"running test function {self.test_backup.__name__}")
-        run_results = await self.run_backups("test_backup", data)
-        destination_db = await self.restore_db(run_results.db_name, run_results.full_location)
+        run_results = self.run_backups("test_backup", data)
+        destination_db = self.restore_db(run_results.db_name, run_results.full_location)
         print("reading data")
-        self.assertEqual(await self.read_data(destination_db),
-                         data)
+        self.assertEqual(self.read_data(destination_db), data)
 
 
-    async def test_single_diff_backup(self):
+    def test_single_diff_backup(self):
         initial_data, later_data = self.make_test_data(2)
         print("creating data and backups for test_single_diff_backup")
-        run_results = await self.run_backups("test_single_diff_backup", initial_data, later_data, restore_points=4)
-        destination_db = await self.restore_db(run_results.db_name, run_results.diff_locations[0])
+        run_results = self.run_backups("test_single_diff_backup", initial_data, later_data, restore_points=4)
+        destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[0])
         expected_data = {}
         expected_data.update(initial_data)
         expected_data.update(later_data[0])
-        self.assertEqual(await self.read_data(destination_db),
-                         expected_data)
+        self.assertEqual(self.read_data(destination_db), expected_data)
 
 
-    async def test_multi_diff_backup_restore_second_last(self):
+    def test_multi_diff_backup_restore_second_last(self):
         # later differential backups can modify the manifest of previous backups depending on the
         # restore point parameter.
         # test that these earlier backups are still valid.
         initial_data, later_data = self.make_test_data(5)
         print("creating data and backups for test_multi_diff_backup_restore_second_last")
-        run_results = await self.run_backups("test_multi_diff_backup_restore_second_last", initial_data, later_data, restore_points=2)
-        destination_db = await self.restore_db(run_results.db_name, run_results.diff_locations[-2])
+        run_results = self.run_backups("test_multi_diff_backup_restore_second_last", initial_data, later_data, restore_points=2)
+        destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-2])
         expected_data = {}
         expected_data.update(initial_data)
         for later in later_data[:-1]:
             expected_data.update(later)
-        self.assertEqual(await self.read_data(destination_db),
+        self.assertEqual(self.read_data(destination_db),
                          expected_data)
 
 
-    async def test_multi_diff_backup_restore_last(self):
+    def test_multi_diff_backup_restore_last(self):
         initial_data, later_data = self.make_test_data(5)
         print("creating data and backups for test_multi_diff_backup_restore_last")
-        run_results = await self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=2)
-        destination_db = await self.restore_db(run_results.db_name, run_results.diff_locations[-1])
+        run_results = self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=2)
+        destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
         expected_data = {}
         expected_data.update(initial_data)
         for chunk in later_data:
             expected_data.update(chunk)
-        self.assertEqual(await self.read_data(destination_db),
+        self.assertEqual(self.read_data(destination_db),
                          expected_data)
 
 
-    async def recreate_db(self, dbname):
-        async with await self.backup_runner.connector.connect() as conn:
-            async with conn.cursor() as curr:
-                await curr.execute(f"""
-                DROP DATABASE IF EXISTS {dbname}
-                """)
-                await curr.execute(f"""
-                CREATE DATABASE {dbname}
-                """)
+    def recreate_db(self, dbname):
+        conn = self.backup_runner.connector.connect()
+        conn.set_session(autocommit=True)
+        # with self.backup_runner.connector.connect() as conn:
+        with conn.cursor() as curr:
+            curr.execute(f"""
+            DROP DATABASE IF EXISTS {dbname}
+            """)
+            curr.execute(f"""
+            CREATE DATABASE {dbname}
+            """)
+        conn.close()
 
 
-    async def recreate_table(self, curr):
-        await curr.execute("""
+    def recreate_table(self, curr):
+        curr.execute("""
           DROP TABLE IF EXISTS test_table;
           CREATE TABLE test_table (id int PRIMARY KEY,
                      value varchar);
         """)
 
 
-    async def write_dict(self, cursor, kvs):
+    def write_dict(self, cursor, kvs):
         stmt_values = ",".join(["(%s, %s)" for _ in range(len(kvs))])
         value_list = []
         for k, v in kvs.items():
             value_list.append(k)
             value_list.append(v)
         stmt = "INSERT INTO test_table (id, value) VALUES " + stmt_values
-        await cursor.execute(stmt, value_list)
+        cursor.execute(stmt, value_list)
 
 
-    async def read_dict(self, cursor):
-        await cursor.execute("SELECT * from test_table")
-        ret = await cursor.fetchall()
+    def read_dict(self, cursor):
+        cursor.execute("SELECT * from test_table")
+        ret = cursor.fetchall()
         d = {}
         for row in ret:
             k, v = row
@@ -256,22 +255,17 @@ class BackupRunner:
         return yb_backup_diff.YBBackup.create(backup_args)
 
 
-    async def asyncify(self, f):
-        loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, f)
-
-
-    async def run_create(self, location_suffix, keyspace):
+    def run_create(self, location_suffix, keyspace):
         ybb = self.get_yb_backup(location_suffix, keyspace, 'create', self.args['create'])
-        return await self.asyncify(ybb.run)
+        return ybb.run()
 
 
-    async def run_restore(self, location_suffix, keyspace):
+    def run_restore(self, location_suffix, keyspace):
         ybb = self.get_yb_backup(location_suffix, keyspace, 'restore', self.args['restore'])
-        return await self.asyncify(ybb.run)
+        return ybb.run()
 
 
-    async def run_create_diff(self, location_suffix, keyspace, previous_location_suffix, restore_points):
+    def run_create_diff(self, location_suffix, keyspace, previous_location_suffix, restore_points):
         base_backup_location = self.args['test_harness']['backup_location_base']
         previous_location_full = os.path.join(base_backup_location, previous_location_suffix)
         ybb = self.get_yb_backup(location_suffix,
@@ -280,7 +274,7 @@ class BackupRunner:
                                  self.args['create'],
                                  extra_kvs={"prev_manifest_source": previous_location_full,
                                             "restore_points": restore_points})
-        return await self.asyncify(ybb.run)
+        return ybb.run()
 
 
 if __name__ == '__main__':
