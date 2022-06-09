@@ -805,6 +805,11 @@ class YBBackup:
 
 
     @staticmethod
+    def get_upload_file_path(backup_location, tablet_id, filename):
+        return os.path.join(backup_location, f'tablet-{tablet_id}', filename)
+
+
+    @staticmethod
     def create(args_list=None):
         parser = argparse.ArgumentParser(
             description='Backup/restore YB table',
@@ -2200,7 +2205,7 @@ class YBBackup:
         """
         try:
             self.run_ssh_cmd(['ls', self.args.nfs_storage_path], tserver_ip)
-        except Exception as ex:
+        except Exception:
             raise BackupException(
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
                  % (self.args.nfs_storage_path, tserver_ip)))
@@ -2421,7 +2426,7 @@ class YBBackup:
             else:
                 manifest.manifest_previous = ''
             result = True
-        except:
+        except Exception:
              result =  False
              logging.info("Failed to get manifest {}".format(manifest_file))
         finally:
@@ -2581,18 +2586,15 @@ class YBBackup:
                 if self.args.restore_points <= prev_manifest[key]["generation"]:
                     write_previous_manifests = True
                     tablet = key.split("/")[0]
-                    file = key.split("/")[1]
+                    filename = key.split("/")[1]
                     final_manifest[key]["action"] = ACTION_MOVE
                     final_manifest[key]["generation"] = 1
                     # reset generation and location for restore_point manifests
-                    for num_manifest in restore_point_manifests.keys():
-                        # if (tablet in restore_point_manifests[num_manifest].storage_tablet_ids.) and (file in restore_point_manifests[num_manifest]):
-                        if (restore_point_manifests[num_manifest].storage_tablet_ids.get(tablet)) and (restore_point_manifests[num_manifest].storage_tablet_ids[tablet].get(file)):
-                            restore_point_manifests[num_manifest].storage_tablet_ids[tablet][file]['generation'] = num_manifests
-                            restore_point_manifests[num_manifest].storage_tablet_ids[tablet][file]['src_location'] = \
-                                self.args.backup_location
-                                # final_manifest[key]
-                                # self.manifest_class.storage_tablet_ids[tablet][file]['src_location']
+                    for manifest in restore_point_manifests.values():
+                        if (manifest.storage_tablet_ids.get(tablet) and manifest.storage_tablet_ids[tablet].get(filename)):
+                            manifest.storage_tablet_ids[tablet][filename]['generation'] = num_manifests
+                            manifest.storage_tablet_ids[tablet][filename]['src_location'] = self.get_upload_file_path(
+                                self.args.backup_location, tablet, filename)
                 else:
                     final_manifest[key]["action"] = ACTION_NOOP
                     final_manifest[key]["generation"] = prev_manifest[key]["generation"] + 1
