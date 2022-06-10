@@ -30,9 +30,6 @@ from multiprocessing.pool import ThreadPool
 
 import os
 import re
-# INTERNAL_CONFIG = True if os.environ.get("INTERNAL_CONFIG") else False
-# INTERNAL_CONFIG = True
-INTERNAL_CONFIG = False
 
 TABLET_UUID_LEN = 32
 UUID_RE_STR = '[0-9a-f-]{32,36}'
@@ -835,7 +832,7 @@ class YBBackup:
             formatter_class=RawDescriptionHelpFormatter)
 
         parser.add_argument(
-            '--masters', required= True if not INTERNAL_CONFIG else False,
+            '--masters', required=True,
                 help="Comma separated list of masters for the cluster")
         parser.add_argument(
             '--ts_web_hosts_ports', help="Custom TS HTTP hosts and ports. "
@@ -898,7 +895,7 @@ class YBBackup:
             help="Whether checksums will be created and checked. If specified, will skip using "
                  "checksums.")
 
-        backup_location_group = parser.add_mutually_exclusive_group(required= True if not INTERNAL_CONFIG else False)
+        backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
             '--backup_location',
             help="Directory/bucket under which the snapshots should be created or "
@@ -2926,24 +2923,23 @@ class YBBackup:
             tablets_by_tserver_to_download[tserver_ip] -= deleted_tablets
         self.timer.log_new_phase("Download data")
         parallel_downloads = SequencedParallelCmd(self.run_ssh_cmd)
-        for key in new_tserver_tablets:
-            tablet_src_desc = []
-            for key in new_tserver_tablets:
-              tablets = new_tserver_tablets[key]
-              for y in tablets.items():
-                tuple1 = y[1]
-                for source in tuple1:
-                  tuple_src_dest = (source['src_location'], source['snapshotid'])
-                  tablet_src_desc.append(tuple_src_dest)
-            #tablet_src_desc now container list of tuples src, dest for ssh commads
 
-            self.prepare_cloud_ssh_cmds_files(tablet_src_desc,
-                                              parallel_downloads,
-                                              tserver_to_tablet_to_snapshot_dirs,
-                                              self.args.backup_location,
-                                              snapshot_id, tablets_by_tserver_to_download,
-                                              upload=False,
-                                              snapshot_metadata=snapshot_meta)
+        tablet_src_desc = []
+        for tablets in new_tserver_tablets.values():
+          for tuple1 in tablets.values():
+            # tuple1 = y[1]
+            for source in tuple1:
+              tuple_src_dest = (source['src_location'], source['snapshotid'])
+              tablet_src_desc.append(tuple_src_dest)
+        #tablet_src_desc now container list of tuples src, dest for ssh commads
+
+        self.prepare_cloud_ssh_cmds_files(tablet_src_desc,
+                                          parallel_downloads,
+                                          tserver_to_tablet_to_snapshot_dirs,
+                                          self.args.backup_location,
+                                          snapshot_id, tablets_by_tserver_to_download,
+                                          upload=False,
+                                          snapshot_metadata=snapshot_meta)
 
         # Run a sequence of steps for each tablet, handling different tablets in parallel.
         results = parallel_downloads.run(self.pool)

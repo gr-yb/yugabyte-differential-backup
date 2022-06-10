@@ -75,19 +75,24 @@ class BackupDiffTest(unittest.TestCase):
 
         db_name = random_suffix(f"{test_name}_", 10)
         self.recreate_db(db_name)
-        with self.backup_runner.connector.connect(db_name) as conn:
+        conn = self.backup_runner.connector.connect(db_name)
+        with conn:
             with conn.cursor() as curr:
                 self.recreate_table(curr)
                 self.write_dict(curr, initial_data)
+        conn.close()
+
         source_keyspace = f"ysql.{db_name}"
         full_backup_location = f"{db_name}_full"
         self.backup_runner.run_create(full_backup_location, source_keyspace)
 
         diff_locations = []
         for i, data_dict in enumerate(subsequent_data if subsequent_data else []):
-            with self.backup_runner.connector.connect(db_name) as conn:
+            conn = self.backup_runner.connector.connect(db_name)
+            with conn:
                 with conn.cursor() as curr:
                     self.write_dict(curr, data_dict)
+            conn.close()
             diff_location = f"{db_name}_diff_{i}"
             self.backup_runner.run_create_diff(diff_location,
                                                source_keyspace,
@@ -101,10 +106,12 @@ class BackupDiffTest(unittest.TestCase):
 
 
     def read_data(self, db_name):
-        with self.backup_runner.connector.connect(db_name) as conn:
+        conn = self.backup_runner.connector.connect(db_name)
+        with conn:
             data = None
             with conn.cursor() as cur:
                 data = self.read_dict(cur)
+        conn.close()
         return data
 
 
@@ -126,7 +133,7 @@ class BackupDiffTest(unittest.TestCase):
     def test_single_diff_backup(self):
         initial_data, later_data = self.make_test_data(2)
         print("creating data and backups for test_single_diff_backup")
-        run_results = self.run_backups("test_single_diff_backup", initial_data, later_data, restore_points=4)
+        run_results = self.run_backups("test_single_diff_backup", initial_data, later_data, restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[0])
         expected_data = {}
         expected_data.update(initial_data)
@@ -154,6 +161,18 @@ class BackupDiffTest(unittest.TestCase):
         initial_data, later_data = self.make_test_data(5)
         print("creating data and backups for test_multi_diff_backup_restore_last")
         run_results = self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=2)
+        destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
+        expected_data = {}
+        expected_data.update(initial_data)
+        for chunk in later_data:
+            expected_data.update(chunk)
+        self.assertEqual(self.read_data(destination_db),
+                         expected_data)
+
+    def test_multi_diff_backup_single_restore_point(self):
+        initial_data, later_data = self.make_test_data(3)
+        print("creating data and backups for test_multi_diff_backup_restore_last")
+        run_results = self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
         expected_data = {}
         expected_data.update(initial_data)
