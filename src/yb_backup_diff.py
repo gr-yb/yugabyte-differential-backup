@@ -2527,14 +2527,11 @@ class YBBackup:
             # load number of restore points previous_manifests
             for num_manifests in range(1, self.args.restore_points):
                 restore_point_manifests[num_manifests] = Manifest(uuid.uuid1())
-                manifest_location = restore_point_manifests[num_manifests-1].manifest_previous
+                manifest_location = restore_point_manifests[num_manifests - 1].manifest_previous
                 prev_manifestfile = os.path.join(manifest_location, MANIFEST)
                 if self.get_manifest(dest_path, prev_manifestfile, restore_point_manifests[num_manifests]):
                     restore_point_manifests[num_manifests].manifest_location = manifest_location
                     continue
-
-            if self.args.verbose:
-                logging.info("\nNumber of previous manifests: %s restore points %s" %(num_manifests + 1,  self.args.restore_points))
 
             prev_manifest = dict()
             # self.prev_manifest_class.storage_tablet_ids =  json_dict['manifest']['storage']['tablet_ids']
@@ -2589,7 +2586,7 @@ class YBBackup:
                     # reset generation and location for restore_point manifests
                     for manifest in restore_point_manifests.values():
                         if (manifest.storage_tablet_ids.get(tablet) and manifest.storage_tablet_ids[tablet].get(filename)):
-                            manifest.storage_tablet_ids[tablet][filename]['generation'] = num_manifests
+                            manifest.storage_tablet_ids[tablet][filename]['generation'] = self.args.restore_points - 1
                             manifest.storage_tablet_ids[tablet][filename]['src_location'] = self.get_upload_file_path(
                                 self.args.backup_location, tablet, filename)
                 else:
@@ -3146,10 +3143,10 @@ class YBBackup:
                 print(json.dumps({"error": "Command was not specified"}))
         except BackupException as ex:
             print(json.dumps({"error": "Backup exception: {}".format(str(ex))}))
+            raise ex
         except Exception as ex:
             print(json.dumps({"error": "Exception: {}".format(str(ex))}))
-            traceback.print_exc()
-            traceback.print_stack()
+            raise ex
         finally:
             self.timer.print_summary()
 
