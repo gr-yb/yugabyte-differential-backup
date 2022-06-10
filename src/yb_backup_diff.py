@@ -18,7 +18,6 @@ import pipes
 import random
 import string
 import subprocess
-import traceback
 import time
 import json
 import uuid
@@ -963,6 +962,9 @@ class YBBackup:
         parser.add_argument(
             '--aws_credentials_file', required=False,
             help='Path to aws credentials file.')
+        parser.add_argument(
+            '--history_file', required=False,
+            help='Path to history file of executed backup commands.')
         return YBBackup(parser.parse_args(args_list))
 
 
@@ -3124,6 +3126,21 @@ class YBBackup:
             self.__run_internal()
 
 
+    def update_history(self, run_exc=None):
+        if not self.args.history_file:
+            return
+        try:
+            with open(self.args.history_file, 'a', encoding='utf-8') as fp:
+                payload = {"command": self.args.command,
+                           "start_time": self.timer.logged_times[0],
+                           "end_time": time.time(),
+                           "status": "OK" if not run_exc else repr(run_exc),
+                           "args": vars(self.args)}
+                json.dump(payload, fp, indent=2)
+        except Exception as ex:
+            logging.error("Couldn't write to history file: %r", ex)
+
+
     def __run_internal(self):
         try:
             self.post_process_arguments()
@@ -3135,18 +3152,19 @@ class YBBackup:
                 self.restore_keys()
             elif self.args.command == 'delete':
                 self.delete_backup()
-            elif self.args.command == 'create_diff': #ourstuff
+            elif self.args.command == 'create_diff':
                 logging.info("Start run Diff backup ...")
                 self.backup_table()
             else:
-                logging.error('Command was not specified')
-                print(json.dumps({"error": "Command was not specified"}))
-        except BackupException as ex:
-            print(json.dumps({"error": "Backup exception: {}".format(str(ex))}))
-            raise ex
+                msg = 'Command was not specified'
+                logging.error(msg)
+                raise BackupException(msg)
         except Exception as ex:
-            print(json.dumps({"error": "Exception: {}".format(str(ex))}))
+            print(json.dumps({"error": repr(ex)}))
+            self.update_history(ex)
             raise ex
+        else:
+            self.update_history()
         finally:
             self.timer.print_summary()
 
