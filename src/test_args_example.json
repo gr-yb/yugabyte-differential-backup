@@ -17,7 +17,8 @@
       "remote_ysql_dump_binary": "/path/to/ysql_dump/on/server",
       "remote_ysql_shell_binary": "/path/to/ysqlsh/on/server",
       "aws_credentials_file": "/path/to/aws/credentials/file",
-      "storage_type": "s3"
+      "storage_type": "s3",
+      "history_file": "backup_command_history.log"
     }
   },
   "create": {
@@ -33,9 +34,9 @@
     "key_values": {}
   },
   "test_harness": {
-      "backup_location_base": "s3://prefix/to/use/for/test/objects",
-      "db_user": "user_for_sql_queries_performed_in_test",
-      "db_host": "host_for_sql_queries_performed_in_test",
-      "db_port": 5433
+    "backup_location_base": "s3://prefix/to/use/for/test/objects",
+    "db_user": "user_for_sql_queries_performed_in_test",
+    "db_host": "host_for_sql_queries_performed_in_test",
+    "db_port": 5433
   }
 }
