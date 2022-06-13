@@ -4,6 +4,8 @@ The differential backup script requires environmental configuration passed in th
 arguments. More details on each argument can be found by passing the `--help` flag to the
 `yb_backup_diff.py` program.
 
+## create
+
 This is an example of creating a backup against a YSQL database. Make sure to replace the arguments
 with the proper values for your environment. The important arguments are:
 * `keyspace` specifies the YSQL database to back up
@@ -32,6 +34,8 @@ python yb_backup_diff.py \
     --backup_location s3://bucket/full_backup_location \
     create
 ```
+
+## create_diff
 
 Creating a differential backup based on the previously created full backup. Important arguments:
 * `backup_location` the offsite location to store the backup files
@@ -67,6 +71,8 @@ python yb_backup_diff.py \
     --backup_location s3://bucket/diff_backup_location \
     create_diff
 ```
+
+## restore
 
 Restoring from the previously created differential backup. Important arguments:
 * `backup_location` the location to find the previously created backup to restore from
