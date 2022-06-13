@@ -200,11 +200,6 @@ class Manifest():
             self.manifest_previous = ''
 
 
-class App(dict):
-    def __str__(self):
-        return json.dumps(self)
-
-
 class BackupException(Exception):
     """A YugaByte backup exception."""
     pass
