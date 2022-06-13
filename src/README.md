@@ -5,7 +5,11 @@ arguments. More details on each argument can be found by passing the `--help` fl
 `yb_backup_diff.py` program.
 
 This is an example of creating a backup against a YSQL database. Make sure to replace the arguments
-with the proper values for your environment:
+with the proper values for your environment. The important arguments are:
+* `keyspace` specifies the YSQL database to back up
+* `backup_location` the offsite location to store the backup files
+* `storage_type` the kind of offsite storage used. S3 is the most heavily tested, NFS is poorly
+  supported.
 
 ```
 python yb_backup_diff.py \
@@ -29,7 +33,17 @@ python yb_backup_diff.py \
     create
 ```
 
-Creating a differential backup based on the previously made full backup:
+Creating a differential backup based on the previously created full backup. Important arguments:
+* `backup_location` the offsite location to store the backup files
+* `keyspace` the YSQL database to back up. Must match the keyspace argument to the previous `create` or `create_diff` command
+* `prev_manifest_source` the `backup_location` passed to the previous `create` or `create_diff`
+  command to use as the base for the differential backup
+* `restore_points` the number of differential backups that can be restored from at any given
+  time. For example, creating a chain of differential backups of length 10 where each was created
+  with a `restore_points` value of 4 will only allow you to successfully restore from the previous 4
+  differential backups. The older backups will be invalid.
+
+
 ```
 python yb_backup_diff.py \
     --no_auto_name \
@@ -54,7 +68,10 @@ python yb_backup_diff.py \
     create_diff
 ```
 
-Restoring from the previously created differential backup:
+Restoring from the previously created differential backup. Important arguments:
+* `backup_location` the location to find the previously created backup to restore from
+* `keyspace` the YSQL database to restore to. This database will be created if it does not exist.
+
 ```
 python yb_backup_diff.py \
     --no_auto_name \
