@@ -6,6 +6,7 @@
 #
 # https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
 
+import abc
 import collections
 import json
 import logging
@@ -15,6 +16,8 @@ import random
 import string
 import unittest
 
+import cassandra.cluster
+import cassandra.query
 import psycopg2
 
 import yb_backup_diff
@@ -44,11 +47,10 @@ class PgConnector:
 BackupTestRun = collections.namedtuple('BackupTestRun', ['db_name', 'keyspace', 'full_location', 'diff_locations'])
 
 
-class BackupDiffTest(unittest.TestCase):
+class BackupDiffTest(abc.ABC):
     backup_runner = None
     ROWS_PER_BATCH = 10
     ARGS_FILE_PATH = "backup_args.json"
-    LOG_FILE = "test_run.log"
 
 
     @classmethod
@@ -56,7 +58,7 @@ class BackupDiffTest(unittest.TestCase):
         cls.backup_runner = BackupRunner.initialize_from_file(cls.ARGS_FILE_PATH)
         logging.basicConfig(level=logging.INFO,
                             format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s",
-                            filename=cls.LOG_FILE,
+                            filename=cls.log_file_name(),
                             filemode='w')
 
 
@@ -75,24 +77,16 @@ class BackupDiffTest(unittest.TestCase):
 
         db_name = random_suffix(f"{test_name}_", 10)
         self.recreate_db(db_name)
-        conn = self.backup_runner.connector.connect(db_name)
-        with conn:
-            with conn.cursor() as curr:
-                self.recreate_table(curr)
-                self.write_dict(curr, initial_data)
-        conn.close()
+        self.write_data(db_name, initial_data, recreate_table=True)
 
-        source_keyspace = f"ysql.{db_name}"
+        # source_keyspace = f"ysql.{db_name}"
+        source_keyspace = self.get_full_keyspace(db_name)
         full_backup_location = f"{db_name}_full"
         self.backup_runner.run_create(full_backup_location, source_keyspace)
 
         diff_locations = []
         for i, data_dict in enumerate(subsequent_data if subsequent_data else []):
-            conn = self.backup_runner.connector.connect(db_name)
-            with conn:
-                with conn.cursor() as curr:
-                    self.write_dict(curr, data_dict)
-            conn.close()
+            self.write_data(db_name, data_dict, recreate_table=False)
             diff_location = f"{db_name}_diff_{i}"
             self.backup_runner.run_create_diff(diff_location,
                                                source_keyspace,
@@ -105,19 +99,31 @@ class BackupDiffTest(unittest.TestCase):
                              diff_locations=diff_locations)
 
 
-    def read_data(self, db_name):
-        conn = self.backup_runner.connector.connect(db_name)
-        with conn:
-            data = None
-            with conn.cursor() as cur:
-                data = self.read_dict(cur)
-        conn.close()
-        return data
+    @classmethod
+    @abc.abstractmethod
+    def log_file_name(cls): pass
+
+    @classmethod
+    @abc.abstractmethod
+    def get_full_keyspace(cls, dbname): pass
+
+    @abc.abstractmethod
+    def read_data(self, db_name): pass
+
+    @abc.abstractmethod
+    def write_data(self, db_name, data, recreate_table=False): pass
+
+    @abc.abstractmethod
+    def recreate_db(self, dbname): pass
+
+    @abc.abstractmethod
+    def assertEqual(self, first, second, msg=None): pass
 
 
     def restore_db(self, source_db_name, backup_location):
         destination_db = f"{source_db_name}_restore"
-        self.backup_runner.run_restore(backup_location, f"ysql.{destination_db}")
+        # self.backup_runner.run_restore(backup_location, f"ysql.{destination_db}")
+        self.backup_runner.run_restore(backup_location, self.get_full_keyspace(destination_db))
         return destination_db
 
 
@@ -182,26 +188,37 @@ class BackupDiffTest(unittest.TestCase):
                          expected_data)
 
 
-    def recreate_db(self, dbname):
-        conn = self.backup_runner.connector.connect()
-        conn.set_session(autocommit=True)
-        # with self.backup_runner.connector.connect() as conn:
-        with conn.cursor() as curr:
-            curr.execute(f"""
-            DROP DATABASE IF EXISTS {dbname}
-            """)
-            curr.execute(f"""
-            CREATE DATABASE {dbname}
-            """)
+class YSQLBackupDiffTest(BackupDiffTest, unittest.TestCase):
+
+
+    @classmethod
+    def get_full_keyspace(cls, dbname):
+        return f"ysql.{dbname}"
+
+
+    @classmethod
+    def log_file_name(cls):
+        return "YSQLBackupDiffTest.log"
+
+
+    def read_data(self, db_name):
+        conn = self.backup_runner.connector.connect(db_name)
+        with conn:
+            data = None
+            with conn.cursor() as cur:
+                data = self.read_dict(cur)
         conn.close()
+        return data
 
 
-    def recreate_table(self, curr):
-        curr.execute("""
-          DROP TABLE IF EXISTS test_table;
-          CREATE TABLE test_table (id int PRIMARY KEY,
-                     value varchar);
-        """)
+    def write_data(self, db_name, data, recreate_table=False):
+        conn = self.backup_runner.connector.connect(db_name)
+        with conn:
+            with conn.cursor() as curr:
+                if recreate_table:
+                    self.recreate_table(curr)
+                self.write_dict(curr, data)
+        conn.close()
 
 
     def write_dict(self, cursor, kvs):
@@ -222,6 +239,71 @@ class BackupDiffTest(unittest.TestCase):
             k, v = row
             d[k] = v
         return d
+
+
+    def recreate_db(self, dbname):
+        conn = self.backup_runner.connector.connect()
+        conn.set_session(autocommit=True)
+        # with self.backup_runner.connector.connect() as conn:
+        with conn.cursor() as curr:
+            curr.execute(f"""
+            DROP DATABASE IF EXISTS {dbname}
+            """)
+            curr.execute(f"""
+            CREATE DATABASE {dbname}
+            """)
+        conn.close()
+
+
+    def recreate_table(self, curr):
+        curr.execute("""
+          DROP TABLE IF EXISTS test_table;
+          CREATE TABLE test_table (id int PRIMARY KEY,
+                                   value varchar);
+        """)
+
+
+class YCQLBackupDiffTest(BackupDiffTest, unittest.TestCase):
+
+    @classmethod
+    def get_full_keyspace(cls, dbname):
+        return f"ycql.{dbname}"
+
+
+    @classmethod
+    def setUpClass(cls):
+        # pylint: disable=c-extension-no-member
+        super(YCQLBackupDiffTest, cls).setUpClass()
+        cls.cluster = cassandra.cluster.Cluster([cls.backup_runner.connector.host])
+        cls.session = cls.cluster.connect()
+
+
+    @classmethod
+    def log_file_name(cls):
+        return "YCQLBackupDiffTest.log"
+
+
+    def read_data(self, db_name):
+        rows = self.session.execute(f'SELECT * from {db_name}.test_table')
+        return {row.id: row.value for row in rows}
+
+
+    def write_data(self, db_name, data, recreate_table=False):
+        # pylint: disable=c-extension-no-member
+        table_name = f"{db_name}.test_table"
+        if recreate_table:
+            self.session.execute("DROP TABLE IF EXISTS {}".format(table_name))
+            self.session.execute("CREATE TABLE {} (id int PRIMARY KEY, value varchar);".format(table_name))
+        batch = cassandra.query.BatchStatement()
+        for k, v in data.items():
+            batch.add(cassandra.query.SimpleStatement("INSERT INTO {} (id, value) VALUES (%s, %s)".format(table_name)),
+                                                      (k, v))
+        self.session.execute(batch)
+
+
+    def recreate_db(self, dbname):
+        self.session.execute("DROP KEYSPACE IF EXISTS {}".format(dbname))
+        self.session.execute("CREATE KEYSPACE IF NOT EXISTS {}".format(dbname))
 
 
 class BackupRunner:
