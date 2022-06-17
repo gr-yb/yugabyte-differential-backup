@@ -745,7 +745,6 @@ class YBBackup:
         self.tserver_ip_to_web_port = {}
         self.args = args
 
-        self.run_local=False
         self.prev_manifest_class = Manifest(uuid.uuid1())
         self.manifest_class = Manifest(uuid.uuid1())
         self.manifest_class_last_savepoint = ''
@@ -1011,8 +1010,6 @@ class YBBackup:
                     s3_cfg.write('[default]\n' +
                                  'access_key = ' + os.environ['AWS_ACCESS_KEY_ID'] + '\n' +
                                  'secret_key = ' + os.environ['AWS_SECRET_ACCESS_KEY'] + '\n' +
-                                 'access_token = ' + os.getenv('AWS_ACCESS_TOKEN') + '\n' +
-
                                  host_base_cfg)
             else:
                 raise BackupException(
@@ -1794,20 +1791,18 @@ class YBBackup:
 
         return tserver_ip_to_tablet_id_to_snapshot_dirs
 
-    def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path):
-        prefix = pipes.quote(SHA_TOOL_PATH) if not (self.args.mac and self.run_local) else '/usr/bin/shasum'
-        # if self.run_local and not os.path.exists(prefix):
-            # prefix = pipes.quote('/usr/bin/shasum')
+    def create_checksum_cmd_not_quoted(self, file_path, checksum_file_path, run_local=False):
+        prefix = '/usr/bin/shasum -a 256' if (self.args.mac and run_local) else pipes.quote(SHA_TOOL_PATH)
         return "{} {} > {}".format(prefix, file_path, checksum_file_path)
 
-    def create_checksum_cmd(self, file_path, checksum_file_path):
+    def create_checksum_cmd(self, file_path, checksum_file_path, run_local=False):
         return self.create_checksum_cmd_not_quoted(
-            pipes.quote(file_path), pipes.quote(checksum_file_path))
+            pipes.quote(file_path), pipes.quote(checksum_file_path), run_local=run_local)
 
-    def create_checksum_cmd_for_dir(self, dir_path):
+    def create_checksum_cmd_for_dir(self, dir_path, run_local=False):
         return self.create_checksum_cmd_not_quoted(
             os.path.join(pipes.quote(strip_dir(dir_path)), '[!i]*'),
-            pipes.quote(checksum_path(strip_dir(dir_path))))
+            pipes.quote(checksum_path(strip_dir(dir_path))), run_local=run_local)
 
     def prepare_upload_command(self, parallel_commands, snapshot_filepath, tablet_id,
                                tserver_ip, snapshot_dir):
@@ -1824,7 +1819,7 @@ class YBBackup:
         if not self.args.disable_checksums:
             logging.info('Creating check-sum for %s on tablet server %s' % (
                          snapshot_dir, tserver_ip))
-            create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir)
+            create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir, run_local=False)
 
             target_checksum_filepath = checksum_path(target_tablet_filepath)
             snapshot_dir_checksum = checksum_path(strip_dir(snapshot_dir))
@@ -1906,7 +1901,7 @@ class YBBackup:
         cmd_checksum = self.storage.download_file_cmd(
             source_checksum_filepath, snapshot_dir_checksum)
 
-        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp)
+        create_checksum_cmd = self.create_checksum_cmd_for_dir(snapshot_dir_tmp, run_local=False)
         check_checksum_cmd = compare_checksums_cmd(
             snapshot_dir_checksum, checksum_path(strip_dir(snapshot_dir_tmp)))
 
@@ -1981,12 +1976,10 @@ class YBBackup:
         # 2. Create temporary snapshot dir.
         parallel_commands.add_args(tuple(mkdircmd), tserver_ip)
         if restore_mode_file:
-            logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath, self.args.storage_type, 
-                snapshot_dir_tmp, tserver_ip))
             for file in self.prev_manifest_class.storage_tablet_ids[old_tablet_id]:
                 target_filename = os.path.join(snapshot_dir_tmp, file)
                 download_file_cmd = self.storage.download_file_cmd(self.prev_manifest_class.storage_tablet_ids[old_tablet_id][file]['src_location'], 
-                    target_filename)
+                                                                   target_filename)
                 parallel_commands.add_args(tuple(download_file_cmd), tserver_ip)
         else:
             logging.info('Downloading %s from %s to %s on tablet server %s' % (source_filepath,
@@ -1995,7 +1988,6 @@ class YBBackup:
             cmd = self.storage.download_dir_cmd(source_filepath, snapshot_dir_tmp)
             # 3. Download tablet folder.
             parallel_commands.add_args(tuple(cmd), tserver_ip)
-       
         if not self.args.disable_checksums:
             # 4. Download check-sum file.
             parallel_commands.add_args(tuple(cmd_checksum), tserver_ip)
@@ -2213,7 +2205,6 @@ class YBBackup:
         :param src_path: local metadata file path
         :param dest_path: destination metadata file path
         """
-        self.run_local = run_local
         src_checksum_path = checksum_path(src_path)
         dest_checksum_path = checksum_path(dest_path)
 
@@ -2225,7 +2216,7 @@ class YBBackup:
             if not self.args.disable_checksums:
                 logging.info('Creating check-sum for %s' % (src_path))
                 self.run_program([ 'bash','-c',
-                    self.create_checksum_cmd(src_path, src_checksum_path)])
+                    self.create_checksum_cmd(src_path, src_checksum_path, run_local=run_local)])
 
                 logging.info('Uploading %s to %s' % (src_checksum_path, dest_checksum_path))
                 self.run_program(
@@ -2365,7 +2356,6 @@ class YBBackup:
 
 
     def try_download_metadata(self, src, dest, raise_exception, run_local=False):
-        self.run_local = run_local
         try:
             self.download_file(src, dest, run_local=run_local)
         except subprocess.CalledProcessError as ex:
@@ -2531,7 +2521,6 @@ class YBBackup:
                     continue
 
             prev_manifest = dict()
-            # self.prev_manifest_class.storage_tablet_ids =  json_dict['manifest']['storage']['tablet_ids']
             for tablet in self.prev_manifest_class.storage_tablet_ids:
                 for file in self.prev_manifest_class.storage_tablet_ids[tablet]:
                     prev_manifest[tablet + "/" + file] = self.prev_manifest_class.storage_tablet_ids[tablet][file]
@@ -2623,7 +2612,6 @@ class YBBackup:
             self.manifest_class.storage_tablet_ids = copy.deepcopy(self.manifest_class.storage_tablet_ids)
 
         self.timer.log_new_phase("Upload snapshot directories")
-        self.run_local=False
         self.upload_snapshot_directories(tablet_leaders, snapshot_id, snapshot_filepath)
         logging.info(
             '[app] Backed up tables %s to %s successfully!' %
@@ -2631,17 +2619,12 @@ class YBBackup:
 
         if write_previous_manifests:
             manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
-            # self.write_manifest(manifestfile, self.prev_manifest_class)
-            # manifest_source = self.prev_manifest_class.manifest_location
-            # manifest_dest = os.path.join(manifest_source, MANIFEST)
-            # self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
             for index in restore_point_manifests.keys():
                 self.write_manifest(manifestfile, restore_point_manifests[index])
                 manifest_source = restore_point_manifests[index].manifest_location
                 manifest_dest = os.path.join(manifest_source, MANIFEST)
                 self.upload_metadata_and_checksum(manifestfile, manifest_dest, run_local=True)
 
-        # manifest_source = self.args.backup_location
         manifestfile = os.path.join(self.get_tmp_dir(), MANIFEST)
         manifest_dest = os.path.join(self.manifest_class.manifest_location, MANIFEST)
         self.write_manifest(manifestfile, self.manifest_class)
@@ -2649,13 +2632,11 @@ class YBBackup:
 
         if self.args.backup_keys_source:
             self.upload_encryption_key_file()
-        # print(json.dumps({"snapshot_url": snapshot_filepath}))
 
     def download_file(self, src_path, target_path, run_local=False):
         """
         Download the file from the external source to the local temporary folder.
         """
-        self.run_local = run_local
         if self.args.local_yb_admin_binary or run_local:
             if not self.args.disable_checksums:
                 checksum_downloaded = checksum_path_downloaded(target_path)
@@ -2666,7 +2647,7 @@ class YBBackup:
 
             if not self.args.disable_checksums:
                 self.run_program(['bash','-c',
-                    self.create_checksum_cmd(target_path, checksum_path(target_path))])
+                    self.create_checksum_cmd(target_path, checksum_path(target_path), run_local=run_local)])
                 check_checksum_res = self.run_program(['bash', '-c',
                                       compare_checksums_cmd(checksum_downloaded,
                                           checksum_path(target_path))]).strip()
@@ -2684,7 +2665,7 @@ class YBBackup:
 
             if not self.args.disable_checksums:
                 self.run_ssh_cmd(
-                    self.create_checksum_cmd(target_path, checksum_path(target_path)),
+                    self.create_checksum_cmd(target_path, checksum_path(target_path), run_local=run_local),
                     server_ip)
                 check_checksum_res = self.run_ssh_cmd(
                     compare_checksums_cmd(checksum_downloaded, checksum_path(target_path)),
@@ -2703,7 +2684,6 @@ class YBBackup:
         Download the metadata file for a backup so as to perform a restore based on it.
         """
 
-        self.run_local = run_local
         if self.args.local_yb_admin_binary or run_local:
             self.run_program(['mkdir', '-p', self.get_tmp_dir()])
         else:
@@ -2720,7 +2700,10 @@ class YBBackup:
            sql_dump_path = None
         src_manifest_dump_path = os.path.join(self.args.backup_location, MANIFEST)
         manifest_dump_path = os.path.join(self.get_tmp_dir(), MANIFEST)
-        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path, manifest_dump_path, False, run_local=True)
+        manifest_dump_path = self.try_download_metadata(src_manifest_dump_path,
+                                                        manifest_dump_path,
+                                                        False,
+                                                        run_local=True)
         return (metadata_path, sql_dump_path, manifest_dump_path)
 
     def import_ysql_dump(self, dump_file_path):
@@ -2881,7 +2864,7 @@ class YBBackup:
 
 
     def download_snapshot_directory_files(self, snapshot_meta, tablets_by_tserver_to_download,
-                                      snapshot_id, table_ids, diff_curr_manifest_dict):
+                                          snapshot_id, table_ids, diff_curr_manifest_dict):
 
         self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
         tserver_ips = list(tablets_by_tserver_to_download.keys())
@@ -3004,8 +2987,8 @@ class YBBackup:
         #if diff Manifest setup for diff restore and structure for while loop
         restore_mode_file = False
         if manifest_dump_path:
-          restore_mode_file = True
-          self.update_manifest_from_local_file(manifest_dump_path, self.prev_manifest_class)
+            restore_mode_file = True
+            self.update_manifest_from_local_file(manifest_dump_path, self.prev_manifest_class)
 
         # The loop must stop after a few rounds because the downloading list includes only new
         # tablets for downloading. The downloading list should become smaller with every round

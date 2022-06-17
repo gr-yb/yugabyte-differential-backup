@@ -9,6 +9,7 @@
 import abc
 import collections
 import json
+import inspect
 import logging
 import os
 import os.path
@@ -24,6 +25,9 @@ import yb_backup_diff
 
 def random_suffix(prefix, n):
     return prefix + ''.join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+def get_caller_function_name():
+    return inspect.currentframe().f_back.f_code.co_name
 
 class PgConnector:
     def __init__(self, user, host, port, password=None, database=None):
@@ -79,7 +83,6 @@ class BackupDiffTest(abc.ABC):
         self.recreate_db(db_name)
         self.write_data(db_name, initial_data, recreate_table=True)
 
-        # source_keyspace = f"ysql.{db_name}"
         source_keyspace = self.get_full_keyspace(db_name)
         full_backup_location = f"{db_name}_full"
         self.backup_runner.run_create(full_backup_location, source_keyspace)
@@ -116,21 +119,17 @@ class BackupDiffTest(abc.ABC):
     @abc.abstractmethod
     def recreate_db(self, dbname): pass
 
-    @abc.abstractmethod
-    def assertEqual(self, first, second, msg=None): pass
-
 
     def restore_db(self, source_db_name, backup_location):
         destination_db = f"{source_db_name}_restore"
-        # self.backup_runner.run_restore(backup_location, f"ysql.{destination_db}")
         self.backup_runner.run_restore(backup_location, self.get_full_keyspace(destination_db))
         return destination_db
 
 
     def test_backup(self):
         data, _ = self.make_test_data(1)
-        print(f"running test function {self.test_backup.__name__}")
-        run_results = self.run_backups("test_backup", data)
+        print(f"running test function {get_caller_function_name()}")
+        run_results = self.run_backups(get_caller_function_name(), data)
         destination_db = self.restore_db(run_results.db_name, run_results.full_location)
         print("reading data")
         self.assertEqual(self.read_data(destination_db), data)
@@ -138,8 +137,11 @@ class BackupDiffTest(abc.ABC):
 
     def test_single_diff_backup(self):
         initial_data, later_data = self.make_test_data(2)
-        print("creating data and backups for test_single_diff_backup")
-        run_results = self.run_backups("test_single_diff_backup", initial_data, later_data, restore_points=1)
+        print(f"creating data and backups for {get_caller_function_name()}")
+        run_results = self.run_backups(get_caller_function_name(),
+                                       initial_data,
+                                       later_data,
+                                       restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[0])
         expected_data = {}
         expected_data.update(initial_data)
@@ -152,8 +154,11 @@ class BackupDiffTest(abc.ABC):
         # restore point parameter.
         # test that these earlier backups are still valid.
         initial_data, later_data = self.make_test_data(5)
-        print("creating data and backups for test_multi_diff_backup_restore_second_last")
-        run_results = self.run_backups("test_multi_diff_backup_restore_second_last", initial_data, later_data, restore_points=2)
+        print(f"creating data and backups for {get_caller_function_name()}")
+        run_results = self.run_backups(get_caller_function_name(),
+                                       initial_data,
+                                       later_data,
+                                       restore_points=2)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-2])
         expected_data = {}
         expected_data.update(initial_data)
@@ -165,8 +170,11 @@ class BackupDiffTest(abc.ABC):
 
     def test_multi_diff_backup_restore_last(self):
         initial_data, later_data = self.make_test_data(5)
-        print("creating data and backups for test_multi_diff_backup_restore_last")
-        run_results = self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=2)
+        print(f"creating data and backups for {get_caller_function_name()}")
+        run_results = self.run_backups(get_caller_function_name(),
+                                       initial_data,
+                                       later_data,
+                                       restore_points=2)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
         expected_data = {}
         expected_data.update(initial_data)
@@ -177,8 +185,11 @@ class BackupDiffTest(abc.ABC):
 
     def test_multi_diff_backup_single_restore_point(self):
         initial_data, later_data = self.make_test_data(3)
-        print("creating data and backups for test_multi_diff_backup_restore_last")
-        run_results = self.run_backups("test_multi_diff_backup_restore_last", initial_data, later_data, restore_points=1)
+        print(f"creating data and backups for {get_caller_function_name()}")
+        run_results = self.run_backups(get_caller_function_name(),
+                                       initial_data,
+                                       later_data,
+                                       restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
         expected_data = {}
         expected_data.update(initial_data)
@@ -244,7 +255,6 @@ class YSQLBackupDiffTest(BackupDiffTest, unittest.TestCase):
     def recreate_db(self, dbname):
         conn = self.backup_runner.connector.connect()
         conn.set_session(autocommit=True)
-        # with self.backup_runner.connector.connect() as conn:
         with conn.cursor() as curr:
             curr.execute(f"""
             DROP DATABASE IF EXISTS {dbname}
