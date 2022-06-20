@@ -13,6 +13,7 @@ from __future__ import print_function
 import argparse
 import atexit
 import copy
+import dataclasses
 import logging
 import pipes
 import random
@@ -279,7 +280,8 @@ class SingleArgParallelCmd:
         fn_args = sorted(set(self.args))
         return self._run_internal(self.fn, fn_args, fn_args, pool)
 
-    def _run_internal(self, internal_fn, internal_fn_srgs, fn_args, pool):
+    @staticmethod
+    def _run_internal(internal_fn, internal_fn_srgs, fn_args, pool):
         values = pool.map(internal_fn, internal_fn_srgs)
         # Return a map from args to the command results.
         assert len(fn_args) == len(values)
@@ -316,6 +318,12 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
         return self._run_internal(internal_fn, fn_args, fn_args, pool)
 
 
+@dataclasses.dataclass
+class SequencedCmdArgs:
+    args: list
+    index_to_return: int = None
+
+
 class SequencedParallelCmd(SingleArgParallelCmd):
     """
     Invokes commands in a parallel way using the given thread pool.
@@ -334,55 +342,51 @@ class SequencedParallelCmd(SingleArgParallelCmd):
     """
     def __init__(self, fn):
         self.fn = fn
-        self.args = []
+        self.parallel_args = []
         """
         The index is used to return a function call result as the whole command result.
         For example:
             SequencedParallelCmd p(fn)
             p.start_command()
             p.add_args(a1, a2)
-            p.add_args(b1, b2)
-            p.use_last_fn_result_as_command_result()
+            p.add_args_and_save_result(b1, b2)
             p.add_args(c1, c2)
             p.run(pool)
             -> run -> fn(a1, a2); result = fn(b1, b2); fn(c1, c2); return result
         """
         self.result_fn_call_index = None
+        self.saved_result_indices = []
 
     def start_command(self):
         # Start new set of argument tuples.
-        self.args.append([])
-
-    def use_last_fn_result_as_command_result(self):
-        # Let's remember the last fn call index to return its' result as the command result.
-        last_fn_call_index = len(self.args[-1]) - 1
-        # All commands in the set must have the same index of the result function call.
-        assert (self.result_fn_call_index is None or
-                self.result_fn_call_index == last_fn_call_index)
-        self.result_fn_call_index = last_fn_call_index
+        self.parallel_args.append(SequencedCmdArgs(args=[], index_to_return=None))
 
     def add_args(self, *args_tuple):
         assert isinstance(args_tuple, tuple)
-        assert len(self.args) > 0, 'Call start_command() before'
-        self.args[-1].append(args_tuple)
+        assert len(self.parallel_args) > 0, 'Call start_command() before'
+        self.parallel_args[-1].args.append(args_tuple)
+
+    def add_args_and_save_result(self, *args_tuple):
+        self.add_args(*args_tuple)
+        current_args = self.parallel_args[-1]
+        current_args.index_to_return = len(current_args.args) - 1
 
     def run(self, pool):
-        def internal_fn(list_of_arg_tuples):
-            assert isinstance(list_of_arg_tuples, list)
+        def internal_fn(sequenced_cmd_args):
+            assert isinstance(sequenced_cmd_args, SequencedCmdArgs)
             # A list of commands: do it one by one.
             results = []
-            for args_tuple in list_of_arg_tuples:
-                assert isinstance(args_tuple, tuple)
-                results.append(self.fn(*args_tuple))
+            for cmd_args in sequenced_cmd_args.args:
+                assert isinstance(cmd_args, tuple)
+                results.append(self.fn(*cmd_args))
 
-            if self.result_fn_call_index is None:
+            if sequenced_cmd_args.index_to_return is None:
                 return results
             else:
-                assert self.result_fn_call_index < len(results)
-                return results[self.result_fn_call_index]
+                return results[sequenced_cmd_args.index_to_return]
 
-        fn_args = [str(list_of_arg_tuples) for list_of_arg_tuples in self.args]
-        return self._run_internal(internal_fn, self.args, fn_args, pool)
+        fn_args = [str(sequenced_args.args) for sequenced_args in self.parallel_args]
+        return self._run_internal(internal_fn, self.parallel_args, fn_args, pool)
 
 
 def check_arg_range(min_value, max_value):
@@ -1928,8 +1932,7 @@ class YBBackup:
             # 5. Create new check-sum file.
             parallel_commands.add_args(create_checksum_cmd, tserver_ip)
             # 6. Compare check-sum files.
-            parallel_commands.add_args(check_checksum_cmd, tserver_ip)
-            parallel_commands.use_last_fn_result_as_command_result()
+            parallel_commands.add_args_and_save_result(check_checksum_cmd, tserver_ip)
         # 7. Move the backup in place.
         parallel_commands.add_args(tuple(mvcmd), tserver_ip)
 
@@ -2705,8 +2708,8 @@ class YBBackup:
         results = parallel_downloads.run(self.pool)
 
         if not self.args.disable_checksums:
-            for k in results:
-                v = results[k].strip()
+            for k, v_raw in results.items():
+                v = v_raw.strip()
                 if v != 'correct':
                     raise BackupException('Check-sum for "{}" is {}'.format(k, v))
 
