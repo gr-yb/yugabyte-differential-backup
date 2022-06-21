@@ -85,7 +85,6 @@ CLOUD_CMD_MAX_RETRIES = 10
 
 NET_ADDR_FILTER_VAL = 'ipv4_external,ipv4_all,ipv6_external,ipv6_non_link_local,ipv6_all'
 
-MANIFEST_JSON = "MANIFEST_JSON"
 MANIFEST = 'MANIFEST'
 CREATE_SNAPSHOT_TIMEOUT_SEC = 60 * 60  # hour
 RESTORE_SNAPSHOT_TIMEOUT_SEC = 24 * 60 * 60  # day
