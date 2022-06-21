@@ -2531,7 +2531,6 @@ class YBBackup:
             'Downloaded metadata file %s from %s' % (target_path, src_path))
 
     def download_metadata_file(self, run_local=False):
-        #
         """
         Download the metadata file for a backup so as to perform a restore based on it.
         """
@@ -2768,7 +2767,6 @@ class YBBackup:
         self.timer.log_new_phase("Generate list of tservers for every tablet")
         all_tablets_by_tserver = self.find_tablet_replicas(snapshot_metadata)
         tablets_by_tserver_to_download = all_tablets_by_tserver
-        print(tablets_by_tserver_to_download)
 
         #if diff Manifest setup for diff restore and structure for while loop
         restore_mode_file = False
@@ -2833,7 +2831,6 @@ class YBBackup:
                                complete_restoration_state)
 
         logging.info('Restored backup successfully!')
-        print(json.dumps({"success": True}))
 
     def delete_backup(self):
         """
@@ -2842,7 +2839,6 @@ class YBBackup:
         if self.args.backup_location:
             self.delete_bucket_obj()
         logging.info('Deleted backup %s successfully!', self.args.backup_location)
-        print(json.dumps({"success": True}))
 
     def restore_keys(self):
         """
@@ -2852,7 +2848,6 @@ class YBBackup:
             self.download_encryption_key_file()
 
         logging.info('Restored backup universe keys successfully!')
-        print(json.dumps({"success": True}))
 
     # At exit callbacks
     def cleanup_temporary_directory(self, tmp_dir):
@@ -2917,14 +2912,12 @@ class YBBackup:
             elif self.args.command == 'delete':
                 self.delete_backup()
             elif self.args.command == 'create_diff':
-                logging.info("Start run Diff backup ...")
                 self.backup_table()
             else:
                 msg = 'Command was not specified'
                 logging.error(msg)
                 raise BackupException(msg)
         except Exception as ex:
-            print(json.dumps({"error": repr(ex)}))
             self.update_history(ex)
             raise ex
         else:
@@ -2936,3 +2929,4 @@ class YBBackup:
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(filename)s %(lineno)d: %(message)s")
     YBBackup.create().run()
+    print(json.dumps({"success": True}))
