@@ -137,15 +137,12 @@ class BackupDiffTest(abc.ABC):
 
     def test_backup(self):
         data, _ = self.make_test_data(1)
-        print(f"running test function {get_caller_function_name()}")
         run_results = self.run_backups(get_caller_function_name(), data)
         destination_db = self.restore_db(run_results.db_name, run_results.full_location)
-        print("reading data")
         self.assert_table_data(destination_db, self.DEFAULT_TABLE_NAME, data)
 
     def test_single_diff_backup(self):
         initial_data, later_data = self.make_test_data(2)
-        print(f"creating data and backups for {get_caller_function_name()}")
         run_results = self.run_backups(get_caller_function_name(),
                                        initial_data,
                                        later_data,
@@ -161,7 +158,6 @@ class BackupDiffTest(abc.ABC):
         # restore point parameter.
         # test that these earlier backups are still valid.
         initial_data, later_data = self.make_test_data(5)
-        print(f"creating data and backups for {get_caller_function_name()}")
         run_results = self.run_backups(get_caller_function_name(),
                                        initial_data,
                                        later_data,
@@ -175,7 +171,6 @@ class BackupDiffTest(abc.ABC):
 
     def test_multi_diff_backup_restore_last(self):
         initial_data, later_data = self.make_test_data(5)
-        print(f"creating data and backups for {get_caller_function_name()}")
         run_results = self.run_backups(get_caller_function_name(),
                                        initial_data,
                                        later_data,
@@ -189,7 +184,6 @@ class BackupDiffTest(abc.ABC):
 
     def test_multi_diff_backup_single_restore_point(self):
         initial_data, later_data = self.make_test_data(3)
-        print(f"creating data and backups for {get_caller_function_name()}")
         run_results = self.run_backups(get_caller_function_name(),
                                        initial_data,
                                        later_data,
@@ -204,7 +198,6 @@ class BackupDiffTest(abc.ABC):
     def test_drop_table(self):
         restore_points = 4
         data, _ = self.make_test_data(1)
-        print(f"creating data and backups for {get_caller_function_name()}")
         db_name = random_suffix(f"{get_caller_function_name()}_", 10)
         self.recreate_db(db_name)
         tables = ["test_table1", "test_table2"]
@@ -234,7 +227,6 @@ class BackupDiffTest(abc.ABC):
     def test_delete_from_table(self):
         restore_points = 4
         data, _ = self.make_test_data(1)
-        print(f"creating data and backups for {get_caller_function_name()}")
         db_name = random_suffix(f"{get_caller_function_name()}_", 10)
         self.recreate_db(db_name)
         self.write_data(db_name, self.DEFAULT_TABLE_NAME, data, recreate_table=True)

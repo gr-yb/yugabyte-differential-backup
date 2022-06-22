@@ -13,7 +13,6 @@ from __future__ import print_function
 import argparse
 import atexit
 import copy
-import dataclasses
 import logging
 import pipes
 import random
@@ -317,10 +316,11 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
         return self._run_internal(internal_fn, fn_args, fn_args, pool)
 
 
-@dataclasses.dataclass
 class SequencedCmdArgs:
-    args: list
-    index_to_return: int = None
+
+    def __init__(self, args, index_to_return):
+        self.args = args
+        self.index_to_return = index_to_return
 
 
 class SequencedParallelCmd(SingleArgParallelCmd):
