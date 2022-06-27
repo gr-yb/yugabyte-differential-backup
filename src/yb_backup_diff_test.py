@@ -128,9 +128,9 @@ class BackupDiffTest(abc.ABC):
     def assert_table_data(self, db_name, table_name, expected_data):
         self.assertEqual(self.read_data(db_name, table_name), expected_data) # pylint: disable=no-member
 
-    def restore_db(self, source_db_name, backup_location, suffix=None):
+    def restore_db(self, source_db_name, backup_location, suffix=None, restore_to_new_db=True):
         suffix_s = f"_{suffix}" if suffix is not None else ""
-        destination_db = f"{source_db_name}_restore{suffix_s}"
+        destination_db = f"{source_db_name}_restore{suffix_s}" if restore_to_new_db else source_db_name
         self.backup_runner.run_restore(backup_location, self.get_full_keyspace(destination_db))
         return destination_db
 
@@ -253,10 +253,45 @@ class BackupDiffTest(abc.ABC):
         destination_db_diff = self.restore_db(db_name, diff_location, suffix="diff")
         self.assert_table_data(destination_db_diff, self.DEFAULT_TABLE_NAME, remaining_data)
 
+    @unittest.expectedFailure
+    def test_drop_table_restore_to_same_keyspace(self):
+        # This test fails for the mainline yb_backup script as well.
+        restore_points = 4
+        data, subsequent_data = self.make_test_data(2)
+        db_name = random_suffix(f"{get_caller_function_name()}_", 10)
+        self.recreate_db(db_name)
+        tables = ["test_table_1", "test_table_2"]
+        for table in tables:
+            self.write_data(db_name, table, data, recreate_table=True)
+        source_keyspace = self.get_full_keyspace(db_name)
+        full_backup_location = f"{db_name}_full"
+        self.backup_runner.run_create(full_backup_location, source_keyspace)
+        for later_data in subsequent_data:
+            for table in tables:
+                self.write_data(db_name, table, later_data)
+        diff_locations = [f"{db_name}_diff_0", f"{db_name}_diff_1"]
+        self.backup_runner.run_create_diff(diff_locations[0],
+                                           source_keyspace,
+                                           full_backup_location,
+                                           restore_points)
+        self.drop_table(db_name, tables[0])
+        self.assert_missing_table(db_name, tables[0])
+        self.backup_runner.run_create_diff(diff_locations[1],
+                                           source_keyspace,
+                                           diff_locations[0],
+                                           restore_points)
+        self.restore_db(db_name, diff_locations[0], restore_to_new_db=False)
+        expected_data = {}
+        expected_data.update(data)
+        expected_data.update(subsequent_data[0])
+        for table in tables:
+            self.assert_table_data(db_name, tables[0], expected_data)
+        self.restore_db(db_name, diff_locations[1], restore_to_new_db=False)
+        self.assert_missing_table(db_name, tables[0])
+        self.assert_table_data(db_name, tables[1], data + subsequent_data[0])
+
 
 class YSQLBackupDiffTest(BackupDiffTest, unittest.TestCase):
-
-
     @classmethod
     def get_full_keyspace(cls, dbname):
         return f"ysql.{dbname}"
