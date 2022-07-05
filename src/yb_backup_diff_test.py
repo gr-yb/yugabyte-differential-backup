@@ -148,9 +148,9 @@ class BackupDiffTest(abc.ABC):
                                        later_data,
                                        restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[0])
-        expected_data = {}
-        expected_data.update(initial_data)
-        expected_data.update(later_data[0])
+        expected_data = {k: v
+                         for d in (initial_data, later_data[0])
+                         for k, v in d.items()}
         self.assert_table_data(destination_db, self.DEFAULT_TABLE_NAME, expected_data)
 
     def test_multi_diff_backup_restore_second_last(self):
@@ -163,10 +163,9 @@ class BackupDiffTest(abc.ABC):
                                        later_data,
                                        restore_points=2)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-2])
-        expected_data = {}
-        expected_data.update(initial_data)
-        for later in later_data[:-1]:
-            expected_data.update(later)
+        expected_data = {k: v
+                         for d in [initial_data, *later_data[:-1]]
+                         for k, v in d.items()}
         self.assert_table_data(destination_db, self.DEFAULT_TABLE_NAME, expected_data)
 
     def test_multi_diff_backup_restore_last(self):
@@ -176,10 +175,9 @@ class BackupDiffTest(abc.ABC):
                                        later_data,
                                        restore_points=2)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
-        expected_data = {}
-        expected_data.update(initial_data)
-        for chunk in later_data:
-            expected_data.update(chunk)
+        expected_data = {k: v
+                         for d in [initial_data, *later_data]
+                         for k, v in d.items()}
         self.assert_table_data(destination_db, self.DEFAULT_TABLE_NAME, expected_data)
 
     def test_multi_diff_backup_single_restore_point(self):
@@ -189,10 +187,9 @@ class BackupDiffTest(abc.ABC):
                                        later_data,
                                        restore_points=1)
         destination_db = self.restore_db(run_results.db_name, run_results.diff_locations[-1])
-        expected_data = {}
-        expected_data.update(initial_data)
-        for chunk in later_data:
-            expected_data.update(chunk)
+        expected_data = {k: v
+                         for d in [initial_data, *later_data]
+                         for k, v in d.items()}
         self.assert_table_data(destination_db, self.DEFAULT_TABLE_NAME, expected_data)
 
     def test_drop_table(self):
@@ -281,9 +278,9 @@ class BackupDiffTest(abc.ABC):
                                            diff_locations[0],
                                            restore_points)
         self.restore_db(db_name, diff_locations[0], restore_to_new_db=False)
-        expected_data = {}
-        expected_data.update(data)
-        expected_data.update(subsequent_data[0])
+        expected_data = {k: v
+                         for d in [data, subsequent_data[0]]
+                         for k, v in d.items()}
         for table in tables:
             self.assert_table_data(db_name, tables[0], expected_data)
         self.restore_db(db_name, diff_locations[1], restore_to_new_db=False)

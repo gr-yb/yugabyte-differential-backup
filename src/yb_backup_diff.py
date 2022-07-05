@@ -2338,15 +2338,13 @@ class YBBackup:
                 curr_manifest))
 
         self.timer.log_new_phase("Get the previous manifest for differential backup")
-        previous_manifest_source = self.args.prev_manifest_source
-
         is_differential_backup = self.is_differential_backup()
-        if previous_manifest_source and is_differential_backup:
-            prev_manifestfile = os.path.join(previous_manifest_source, MANIFEST)
+        if self.args.prev_manifest_source and is_differential_backup:
+            prev_manifestfile = os.path.join(self.args.prev_manifest_source, MANIFEST)
             dest_path = os.path.join(self.get_tmp_dir(), MANIFEST)
             if self.get_manifest(dest_path, prev_manifestfile, self.prev_manifest_class):
                 is_differential_backup = True
-                self.manifest_class.manifest_previous = previous_manifest_source
+                self.manifest_class.manifest_previous = self.args.prev_manifest_source
             else:
                 is_differential_backup = False
                 logging.info("Previous manifest " + dest_path + "  not found or could not be loaded, proceeding with full backup.")
@@ -2362,15 +2360,16 @@ class YBBackup:
 
             restore_point_manifests = dict()
             restore_point_manifests[0] = copy.deepcopy(self.prev_manifest_class)
-            restore_point_manifests[0].manifest_location = previous_manifest_source
+            restore_point_manifests[0].manifest_location = self.args.prev_manifest_source
             # load number of restore points previous_manifests
             for num_manifests in range(1, self.args.restore_points):
                 restore_point_manifests[num_manifests] = Manifest(uuid.uuid1())
                 manifest_location = restore_point_manifests[num_manifests - 1].manifest_previous
+                if not manifest_location:
+                    break
                 prev_manifestfile = os.path.join(manifest_location, MANIFEST)
                 if self.get_manifest(dest_path, prev_manifestfile, restore_point_manifests[num_manifests]):
                     restore_point_manifests[num_manifests].manifest_location = manifest_location
-                    continue
 
             prev_manifest = dict()
             for tablet in self.prev_manifest_class.storage_tablet_ids:
@@ -2378,7 +2377,7 @@ class YBBackup:
                     prev_manifest[tablet + "/" + file] = self.prev_manifest_class.storage_tablet_ids[tablet][file]
 
             if self.args.verbose:
-                logging.info('\nPrevious manifest\n{}'.format(prev_manifest))
+                logging.info('Previous manifest\n{}'.format(prev_manifest))
 
             # Create the set of files to copy and compare from the previous backup
             for key in prev_manifest.keys():
@@ -2393,8 +2392,6 @@ class YBBackup:
                 logging.info(
                    "\n\n\nSets: \nfiles_in_both_backups {}\nfiles_in_prev {}\nfiles_in_curr {}\n\n\n".format(
                         files_in_both, files_in_prev, files_in_curr  ))
-
-            # dest_dir = self.args.backup_location
 
             # Copy new files off-cluster
             for key in files_in_curr:
